@@ -38,6 +38,10 @@ describe('Senior/PWD sale', () => {
   let t1 = ''
   beforeEach(async () => {
     await Promise.all(db.tables.map((t) => t.clear()))
+  await db.users.bulkAdd([
+    { id: 'u1', name: 'Cash', role: 'cashier', pinHash: '', active: true },
+    { id: 'sup1', name: 'Sup', role: 'supervisor', pinHash: '', active: true },
+  ])
     const b = await createBranch('Main')
     t1 = (await createTerminal(b.id, 'Counter 1', 'T1')).id
     await openBusinessDay(b.id, 'sup')

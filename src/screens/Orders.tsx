@@ -23,7 +23,13 @@ export default function Orders() {
     return list.map((o) => ({ ...o, payments: pays.filter((p) => p.orderId === o.id) }))
   }, [q])
   const log = useLiveQuery(() => db.discountLog.orderBy('at').reverse().limit(50).toArray(), [])
-  if (!orders || !user || !log) return null
+  const approvals = useLiveQuery(async () => {
+    const rows = await db.approvals.orderBy('at').reverse().limit(50).toArray()
+    const names = new Map((await db.users.toArray()).map((u) => [u.id, u.name]))
+    const terminals = new Map((await db.terminals.toArray()).map((t) => [t.id, t.name]))
+    return rows.map((a) => ({ ...a, requester: names.get(a.requesterId) ?? '?', approver: names.get(a.approverId) ?? '?', terminal: terminals.get(a.terminalId) ?? '?' }))
+  }, [])
+  if (!orders || !user || !log || !approvals) return null
   const label = (m: string) => PAY_METHODS.find((x) => x.id === m)?.label ?? m
   return (
     <section>
@@ -68,6 +74,23 @@ export default function Orders() {
                   <small>{r.items} · VAT-exempt {formatPeso(r.vatExempt)} · 20% {formatPeso(r.discountAmount)}</small>
                 </span>
                 <strong>−{formatPeso(r.reduction)}</strong>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {can(user.role, 'approve') && (
+        <>
+          <h3>Approvals</h3>
+          {approvals.length === 0 && <p className="empty">No approvals yet.</p>}
+          <ul className="lines">
+            {approvals.map((a) => (
+              <li key={a.id} className="row between">
+                <span>
+                  {new Date(a.at).toLocaleString('en-PH')} · {a.action} · asked by {a.requester}, approved by {a.approver} · {a.terminal}
+                  {a.selfApproved && <strong> · SELF-APPROVED</strong>}
+                </span>
+                {a.amount > 0 && <strong>{formatPeso(a.amount)}</strong>}
               </li>
             ))}
           </ul>

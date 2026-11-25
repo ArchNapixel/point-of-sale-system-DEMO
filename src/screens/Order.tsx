@@ -23,6 +23,9 @@ import { variantLabel } from '../db/menu'
 import { Err, useAction } from '../ui'
 import ItemPicker from './ItemPicker'
 import Receipt from './Receipt'
+import ApprovalPrompt from './ApprovalPrompt'
+import { getLimits } from '../db/approvals'
+import { needsApproval } from '../lib/approval'
 
 type MenuItem = Awaited<ReturnType<typeof getSellableMenu>>[number]['items'][number]
 
@@ -184,6 +187,9 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
   const [picking, setPicking] = useState<{ item: MenuItem; initial?: CartLine } | null>(null)
   const [catId, setCatId] = useState('')
   const [paying, setPaying] = useState(false)
+  const [asking, setAsking] = useState(false)
+  const [approval, setApproval] = useState<{ id: string; amount: number } | null>(null) // supervisor approval for a big discount
+  const limits = useLiveQuery(getLimits, [])
   const [showInvoice, setShowInvoice] = useState(false)
   const [discounting, setDiscounting] = useState(false)
   const vat = useLiveQuery(() => getSetting('vatRegistered'), [])
@@ -198,10 +204,12 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
     localStorage.setItem(cartKey(terminalId), JSON.stringify(cart))
   }, [cart, terminalId])
 
-  if (!menu || !held || vat === undefined || !open || perItem === undefined) return null
+  if (!menu || !held || vat === undefined || !open || perItem === undefined || !limits) return null
   const bar = waitEstimate(open, 'bar', perItem)
   const kitchen = waitEstimate(open, 'kitchen', perItem)
   const priced = priceCart(cart, vat)
+  const reduction = priced.discount?.reduction ?? 0
+  const mustAsk = needsApproval(user.role, 'discount', reduction, limits) && !(approval && approval.amount >= reduction)
   const category = menu.find((c) => c.id === catId) ?? menu[0]
 
   const commit = (next: Cart) => {
@@ -334,20 +342,31 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
           <button onClick={() => commit({ ...cart, lines: [] })} disabled={cart.lines.length === 0}>Clear</button>
           <button onClick={hold} disabled={cart.lines.length === 0}>Hold</button>
           <button onClick={() => { setPaying(false); setDiscounting(true) }} disabled={cart.lines.length === 0}>Senior/PWD</button>
-          <button className="primary" onClick={() => { setDiscounting(false); setPaying(true) }} disabled={cart.lines.length === 0}>Take payment</button>
+          <button className="primary" onClick={() => { setDiscounting(false); mustAsk ? setAsking(true) : setPaying(true) }} disabled={cart.lines.length === 0}>Take payment</button>
         </div>
         <Err msg={error} />
         {discounting && (
           <DiscountPanel cart={cart} vat={vat} onCancel={() => setDiscounting(false)} onApply={(discount) => { setCart({ ...cart, discount }); setDiscounting(false) }} />
+        )}
+        {asking && (
+          <ApprovalPrompt
+            action="discount"
+            amount={reduction}
+            requesterId={user.id}
+            title={`Discount of ₱${(reduction / 100).toFixed(2)} is above your limit. Supervisor PIN needed.`}
+            onCancel={() => setAsking(false)}
+            onApproved={(a) => { setApproval({ id: a.id, amount: a.amount }); setAsking(false); setPaying(true) }}
+          />
         )}
         {paying && (
           <PayPanel
             total={priced.total}
             onCancel={() => setPaying(false)}
             onPay={async (lines, key, buyer) => {
-              const { order, payments, change } = await payOrder(terminalId, user.id, cart, lines, key, buyer)
+              const { order, payments, change } = await payOrder(terminalId, user.id, cart, lines, key, buyer, mustAsk ? undefined : approval?.id)
               setCart(emptyCart())
               setHistory([])
+              setApproval(null)
               setPaying(false)
               setDone({ orderId: order.id, number: order.number, change: change ?? 0, pending: payments.some((p) => p.status === 'pending') })
             }}

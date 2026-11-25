@@ -79,8 +79,8 @@ Because there is no seed data, you need screens to enter it.
 ## Phase 2 — Control
 
 ### 2A — Approvals and limits
-- [ ] Supervisor PIN prompt; approvals logged by PIN, terminal and time
-- [ ] Self-approval flagged; per-role limits
+- [x] Supervisor PIN prompt; approvals logged by PIN, terminal and time
+- [x] Self-approval flagged; per-role limits
 
 ### 2B — Voids, refunds, remakes, comps
 - [ ] Line void, order void, refund (partial/later-day/other method), remake, comp

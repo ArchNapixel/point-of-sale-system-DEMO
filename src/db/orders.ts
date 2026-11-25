@@ -1,4 +1,5 @@
 import { db, type DiscountLogEntry, type Order, type Payment } from './db'
+import { consumeApproval } from './approvals'
 import { createQueueItems } from './queue'
 import { formatInvoiceNo } from '../lib/invoice'
 import { newId } from '../lib/id'
@@ -17,7 +18,7 @@ import { getSellContext } from './shifts'
  * Calling again with the same idempotency key returns the first result (line i uses `${key}:${i}`).
  */
 export async function payOrder(
-  terminalId: string, userId: string, cart: Cart, lines: PayLine[], idempotencyKey: string, buyer?: { name: string; tin: string },
+  terminalId: string, userId: string, cart: Cart, lines: PayLine[], idempotencyKey: string, buyer?: { name: string; tin: string }, approvalId?: string,
 ) {
   const prior = await db.payments.where('idempotencyKey').equals(`${idempotencyKey}:0`).first()
   if (prior) return { order: (await db.orders.get(prior.orderId))!, payments: await db.payments.where('orderId').equals(prior.orderId).toArray() }
@@ -75,7 +76,10 @@ export async function payOrder(
     businessDate: order.businessDate,
     cashierId: userId,
   }))
-  await db.transaction('rw', [db.orders, db.payments, db.outbox, db.discountLog, db.counters, db.queueItems, db.queueEvents, db.items, db.categories], async () => {
+  await db.transaction('rw', [db.orders, db.payments, db.outbox, db.discountLog, db.counters, db.queueItems, db.queueEvents, db.items, db.categories, db.approvals, db.users, db.settings], async () => {
+    // A discount above the cashier's limit needs an unused supervisor approval; checked here so no screen can skip it.
+    const approver = await consumeApproval(userId, 'discount', order.discount?.reduction ?? 0, order.id, approvalId)
+    if (approver) order.discountApprovedBy = approver
     order.invoiceNo = formatInvoiceNo(ctx.terminal.invoicePrefix, await nextInvoiceSeq(terminalId))
     await db.orders.add(order)
     await createQueueItems(order, userId)
@@ -115,14 +119,16 @@ async function nextInvoiceSeq(terminalId: string) {
   return n
 }
 
-/**
- * Records that an invoice was printed. The first print is the original; every later one is a REPRINT and is audited.
- * ponytail: no reprint reason or approver yet; supervisor PIN comes with 2A.
- */
-export async function logPrint(orderId: string, userId: string): Promise<'original' | 'reprint'> {
+/** Records that an invoice was printed. The first print is the original; every later one is a REPRINT, audited, and needs a supervisor PIN unless the user may reprint. */
+export async function logPrint(orderId: string, userId: string, approvalId?: string): Promise<'original' | 'reprint'> {
   const kind = (await db.invoicePrints.where('orderId').equals(orderId).count()) === 0 ? 'original' : 'reprint'
-  await db.invoicePrints.add({ id: newId(), orderId, userId, at: new Date().toISOString(), kind })
-  if (kind === 'reprint') await audit({ userId, action: 'invoice.reprint', ref: orderId })
+  let approverId: string | undefined
+  if (kind === 'reprint') {
+    // Someone without the reprint permission (a cashier) needs a supervisor PIN, once per reprint.
+    approverId = await db.transaction('rw', db.approvals, db.users, db.settings, async () => await consumeApproval(userId, 'reprint', 0, orderId, approvalId, orderId))
+  }
+  await db.invoicePrints.add({ id: newId(), orderId, userId, at: new Date().toISOString(), kind, ...(approverId && { approvedBy: approverId }) })
+  if (kind === 'reprint') await audit({ userId, approverId, action: 'invoice.reprint', ref: orderId })
   return kind
 }
 

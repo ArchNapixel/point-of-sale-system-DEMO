@@ -17,6 +17,10 @@ const cash = (n: number) => [{ method: 'cash' as const, tendered: n }]
 let t1 = '', t2 = ''
 beforeEach(async () => {
   await Promise.all(db.tables.map((t) => t.clear()))
+  await db.users.bulkAdd([
+    { id: 'u1', name: 'Cash', role: 'cashier', pinHash: '', active: true },
+    { id: 'sup1', name: 'Sup', role: 'supervisor', pinHash: '', active: true },
+  ])
   const b = await createBranch('Main')
   t1 = (await createTerminal(b.id, 'Counter 1', 'T1')).id
   t2 = (await createTerminal(b.id, 'Counter 2', 'T2')).id
@@ -74,8 +78,8 @@ describe('invoice figures', () => {
 describe('reprints and search', () => {
   it('the first print is the original, later ones are REPRINTs and audited', async () => {
     const { order } = await payOrder(t1, 'u1', cart(), cash(16800), 'k1')
-    expect(await logPrint(order.id, 'u1')).toBe('original')
-    expect(await logPrint(order.id, 'u1')).toBe('reprint')
+    expect(await logPrint(order.id, 'sup1')).toBe('original')
+    expect(await logPrint(order.id, 'sup1')).toBe('reprint')
     expect(await db.invoicePrints.count()).toBe(2)
     expect(await db.auditLog.where('action').equals('invoice.reprint').count()).toBe(1)
   })

@@ -77,6 +77,7 @@ export type Order = {
   gross: number // centavos before any discount
   total: number // centavos the customer pays (gross - discount.reduction)
   discount?: OrderDiscount
+  discountApprovedBy?: string // set when the discount was above the cashier's limit
   status: 'paid'
   paidAt: string
   cashierId: string
@@ -122,7 +123,21 @@ export type QueueItem = {
 }
 // Status changes are events: who, when (rule 6).
 export type QueueEvent = { id: string; itemId: string; status: QueueStatus; userId: string; at: string; note?: string }
-export type InvoicePrint = { id: string; orderId: string; userId: string; at: string; kind: 'original' | 'reprint' }
+// A second person's PIN for a sensitive action: who asked, who approved, on which terminal, when (rule 2).
+export type Approval = {
+  id: string
+  action: 'discount' | 'reprint'
+  requesterId: string
+  approverId: string
+  terminalId: string
+  at: string
+  businessDate: string
+  amount: number // centavos the approval covers (0 when the action has no amount)
+  ref?: string // e.g. the order id being reprinted
+  selfApproved: boolean // requester and approver are the same person: flagged in the approvals report
+  usedFor?: string // set once an action has used it; an approval is good for one action
+}
+export type InvoicePrint = { id: string; orderId: string; userId: string; at: string; kind: 'original' | 'reprint'; approvedBy?: string }
 export type Payment = {
   id: string
   orderId: string
@@ -205,6 +220,7 @@ export const db = new Dexie('demo-pos') as Dexie & {
   payments: EntityTable<Payment, 'id'>
   discountLog: EntityTable<DiscountLogEntry, 'id'>
   invoicePrints: EntityTable<InvoicePrint, 'id'>
+  approvals: EntityTable<Approval, 'id'>
   queueItems: EntityTable<QueueItem, 'id'>
   queueEvents: EntityTable<QueueEvent, 'id'>
 }
@@ -255,4 +271,7 @@ db.version(10).stores({
 })
 db.version(11).stores({
   orders: 'id, businessDayId, businessDate, paidAt, invoiceNo, shiftId',
+})
+db.version(12).stores({
+  approvals: 'id, requesterId, approverId, businessDate, at',
 })

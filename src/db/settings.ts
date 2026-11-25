@@ -10,6 +10,8 @@ export const DEFAULT_SETTINGS = {
   smallWaiveCapCentavos: pesos(5),
   cashDropLimitCentavos: pesos(10000),
   platformCommissionPct: 20,
+  cashierDiscountLimitCentavos: pesos(300), // a cashier's Senior/PWD discount above this needs a supervisor PIN
+  supervisorDiscountLimitCentavos: pesos(2000), // above this, the owner approves
   queueMinutesPerItem: 2, // wait estimate at the cashier: minutes per waiting item
   storeName: 'DEMO Café',
   storeTin: '000-000-000-000',

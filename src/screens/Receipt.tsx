@@ -3,6 +3,9 @@ import { useAuth } from '../auth'
 import { db } from '../db/db'
 import { getSetting } from '../db/settings'
 import { logPrint } from '../db/orders'
+import { needsApproval } from '../lib/approval'
+import { useState } from 'react'
+import ApprovalPrompt from './ApprovalPrompt'
 import { invoiceFigures } from '../lib/invoice'
 import { lineTotal } from '../lib/cart'
 import { PAY_METHODS } from '../lib/payments'
@@ -18,6 +21,7 @@ const R = ({ l, r, bold }: { l: string; r: string; bold?: boolean }) => (
 export default function Receipt({ orderId, onClose }: { orderId: string; onClose: () => void }) {
   const { user } = useAuth()
   const { error, run } = useAction()
+  const [asking, setAsking] = useState(false)
   const data = useLiveQuery(async () => {
     const order = await db.orders.get(orderId)
     if (!order) return null
@@ -84,9 +88,20 @@ export default function Receipt({ orderId, onClose }: { orderId: string; onClose
         <div className="center"><strong>{DEMO_FOOTER}</strong></div>
       </div>
       <Err msg={error} />
+      {asking && (
+        <ApprovalPrompt
+          action="reprint"
+          amount={0}
+          requesterId={user.id}
+          orderRef={o.id}
+          title="Reprinting an invoice needs a supervisor PIN."
+          onCancel={() => setAsking(false)}
+          onApproved={(a) => { setAsking(false); run(async () => { await logPrint(o.id, user.id, a.id); window.print() }) }}
+        />
+      )}
       <div className="row">
         <button onClick={onClose}>Close</button>
-        <button className="primary" onClick={() => run(async () => { await logPrint(o.id, user.id); window.print() })}>
+        <button className="primary" onClick={() => (prints > 0 && needsApproval(user.role, 'reprint', 0, { discountCashier: 0, discountSupervisor: 0 }) ? setAsking(true) : run(async () => { await logPrint(o.id, user.id); window.print() }))}>
           {prints > 0 ? 'Reprint' : 'Print'}
         </button>
       </div>
