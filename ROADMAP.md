@@ -32,8 +32,8 @@ Because there is no seed data, you need screens to enter it.
 - [x] Sold-out toggle
 
 ### 1D — Menu: modifiers
-- [ ] Modifier groups (required, min/max pick)
-- [ ] Modifier prices per variant, "first N free", ₱0 modifiers (no ice, sugar level)
+- [x] Modifier groups (required, min/max pick)
+- [x] Modifier prices per variant, "first N free", ₱0 modifiers (no ice, sugar level)
 
 ### 1E — Order screen (cart)
 - [ ] Order type: dine-in, takeout, pickup

@@ -84,7 +84,8 @@ export async function getSellableMenu() {
       ...c,
       items: items
         .filter((i) => i.active && i.categoryId === c.id)
-        .map((i) => ({ ...i, variants: variants.filter((v) => v.active && v.itemId === i.id) }))
+        .sort((a, b) => a.name.localeCompare(b.name)) // ponytail: alphabetical; add favourites/manual order when cashiers ask
+        .map((i) => ({ ...i, variants: variants.filter((v) => v.active && v.itemId === i.id).sort((a, b) => a.price - b.price) }))
         .filter((i) => i.variants.length > 0),
     }))
     .filter((c) => c.items.length > 0)

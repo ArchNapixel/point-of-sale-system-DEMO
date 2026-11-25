@@ -18,7 +18,28 @@ export type AuditEntry = {
 }
 export type Category = { id: string; name: string; sort: number; active: boolean }
 // ponytail: sold-out is one flag per item. Per-branch / per-channel sold-out comes with delivery channels (4B).
-export type Item = { id: string; categoryId: string; name: string; soldOut: boolean; active: boolean }
+export type Item = {
+  id: string
+  categoryId: string
+  name: string
+  soldOut: boolean
+  active: boolean
+  groupIds?: string[] // modifier groups offered on this item, in display order
+}
+// Min/max count the distinct options picked in the group. required = min >= 1.
+export type ModifierGroup = { id: string; name: string; min: number; max: number; sort: number; active: boolean }
+export type Modifier = {
+  id: string
+  groupId: string
+  name: string
+  price: number // centavos per unit, used when no size-specific price matches
+  sizePrices: Record<string, number> // lowercase size -> centavos, e.g. { "12 oz": 3000, "16 oz": 4000 }
+  freeQty: number // first N units are free (1 syrup pump free, then paid)
+  maxQty: number // most units of this option per drink (pumps)
+  soldOut: boolean
+  sort: number
+  active: boolean
+}
 // A variant is one sellable size/temperature of an item and carries the base price in centavos.
 export type Variant = { id: string; itemId: string; size?: string; temp?: 'hot' | 'iced'; price: number; active: boolean }
 export type Denoms = Record<string, number> // denomination key -> piece count (see shifts.ts DENOMS)
@@ -72,6 +93,8 @@ export const db = new Dexie('demo-pos') as Dexie & {
   categories: EntityTable<Category, 'id'>
   items: EntityTable<Item, 'id'>
   variants: EntityTable<Variant, 'id'>
+  modifierGroups: EntityTable<ModifierGroup, 'id'>
+  modifiers: EntityTable<Modifier, 'id'>
 }
 
 db.version(1).stores({
@@ -91,4 +114,8 @@ db.version(3).stores({
   categories: 'id',
   items: 'id, categoryId',
   variants: 'id, itemId',
+})
+db.version(4).stores({
+  modifierGroups: 'id',
+  modifiers: 'id, groupId',
 })

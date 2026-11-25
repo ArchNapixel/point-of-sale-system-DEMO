@@ -1,10 +1,12 @@
 import { useState, type FormEvent } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useAuth } from '../auth'
-import { db, type Category, type Item, type Variant } from '../db/db'
+import { db, type Category, type Item, type ModifierGroup, type Variant } from '../db/db'
 import {
   createCategory, createItem, createVariant, renameItem, setMenuActive, setSoldOut, updateVariant, variantLabel,
 } from '../db/menu'
+import { setItemGroup } from '../db/modifiers'
+import Modifiers from './Modifiers'
 import { can } from '../lib/roles'
 import { formatPeso, parsePesos } from '../lib/money'
 import { Err, useAction } from '../ui'
@@ -16,9 +18,10 @@ export default function Menu() {
   const categories = useLiveQuery(() => db.categories.toArray(), [])
   const items = useLiveQuery(() => db.items.toArray(), [])
   const variants = useLiveQuery(() => db.variants.toArray(), [])
+  const groups = useLiveQuery(() => db.modifierGroups.toArray(), [])
   const [name, setName] = useState('')
   const { error, run } = useAction()
-  if (!user || !categories || !items || !variants) return null
+  if (!user || !categories || !items || !variants || !groups) return null
   const canEdit = can(user.role, 'editPrices')
 
   const add = async (e: FormEvent) => {
@@ -34,8 +37,9 @@ export default function Menu() {
         <CategoryCard
           key={c.id}
           category={c}
-          items={items.filter((i) => i.categoryId === c.id)}
+          items={items.filter((i) => i.categoryId === c.id).sort((a, b) => a.name.localeCompare(b.name))}
           variants={variants}
+          groups={groups.filter((g) => g.active).sort((a, b) => a.sort - b.sort)}
           canEdit={canEdit}
           userId={user.id}
         />
@@ -48,12 +52,13 @@ export default function Menu() {
         </form>
       )}
       {categories.length === 0 && !canEdit && <p>The owner hasn't added a menu yet.</p>}
+      <Modifiers />
     </>
   )
 }
 
-function CategoryCard({ category, items, variants, canEdit, userId }: {
-  category: Category; items: Item[]; variants: Variant[]; canEdit: boolean; userId: string
+function CategoryCard({ category, items, variants, groups, canEdit, userId }: {
+  category: Category; items: Item[]; variants: Variant[]; groups: ModifierGroup[]; canEdit: boolean; userId: string
 }) {
   const [name, setName] = useState('')
   const { error, run } = useAction()
@@ -72,7 +77,7 @@ function CategoryCard({ category, items, variants, canEdit, userId }: {
         )}
       </h3>
       {items.map((i) => (
-        <ItemRow key={i.id} item={i} variants={variants.filter((v) => v.itemId === i.id)} canEdit={canEdit} userId={userId} />
+        <ItemRow key={i.id} item={i} variants={variants.filter((v) => v.itemId === i.id).sort((a, b) => a.price - b.price)} groups={groups} canEdit={canEdit} userId={userId} />
       ))}
       {canEdit && (
         <form onSubmit={add} className="row">
@@ -85,7 +90,9 @@ function CategoryCard({ category, items, variants, canEdit, userId }: {
   )
 }
 
-function ItemRow({ item, variants, canEdit, userId }: { item: Item; variants: Variant[]; canEdit: boolean; userId: string }) {
+function ItemRow({ item, variants, groups, canEdit, userId }: {
+  item: Item; variants: Variant[]; groups: ModifierGroup[]; canEdit: boolean; userId: string
+}) {
   const { user } = useAuth()
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(item.name)
@@ -120,6 +127,21 @@ function ItemRow({ item, variants, canEdit, userId }: { item: Item; variants: Va
         ))}
       </ul>
       {canEdit && item.active && <AddVariant itemId={item.id} userId={userId} />}
+      {canEdit && item.active && groups.length > 0 && (
+        <p className="row">
+          <small>Add-ons offered:</small>
+          {groups.map((g) => (
+            <label key={g.id}>
+              <input
+                type="checkbox"
+                checked={(item.groupIds ?? []).includes(g.id)}
+                onChange={(e) => setItemGroup(item.id, g.id, e.target.checked)}
+              />{' '}
+              {g.name}
+            </label>
+          ))}
+        </p>
+      )}
     </div>
   )
 }
