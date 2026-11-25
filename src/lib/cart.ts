@@ -24,7 +24,7 @@ export type CartLine = {
   comp?: { code: string; note: string } // free on purpose: priced at ₱0, the value is kept as a comp
   addedAt?: string // when the item was added: a promo window is judged at this time, not at payment
 }
-export type Cart = { orderType: OrderType; name: string; table: string; lines: CartLine[]; discount?: StatutoryInput; promoCode?: string; employee?: { id: string; name: string }; deliveryFee?: number; channelId?: string; customerId?: string }
+export type Cart = { orderType: OrderType; name: string; table: string; lines: CartLine[]; discount?: StatutoryInput; promoCode?: string; employee?: { id: string; name: string }; deliveryFee?: number; channelId?: string; customerId?: string; serviceCharge?: boolean; tip?: number }
 
 // ponytail: a repeat add of the same drink merges into the first line and keeps the first add time, so a re-add after a promo
 // window boundary is judged by the earlier time. Split lines by minute if that ever matters.

@@ -3,7 +3,8 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useAuth } from '../auth'
 import { db, type Bill, type Tab } from '../db/db'
 import { DEVICE_KEY, resolveTerminal } from '../db/device'
-import { buildBill, createTable, mergeTabs, moveTab, setLineSeat, setTableActive, tabTotals, transferTab, walkoutTab, type SplitRequest } from '../db/tabs'
+import { getSetting } from '../db/settings'
+import { buildBill, createTable, setGuests, mergeTabs, moveTab, setLineSeat, setTableActive, tabTotals, transferTab, walkoutTab, type SplitRequest } from '../db/tabs'
 import { emptyCart, lineTotal } from '../lib/cart'
 import { partToCartLines } from '../lib/split'
 import { DEMO_FOOTER } from '../lib/receipt'
@@ -28,7 +29,7 @@ export default function Tabs({ onGo }: { onGo: () => void }) {
     const tables = branchId ? (await db.cafeTables.where('branchId').equals(branchId).toArray()).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })) : []
     const tabs = branchId ? (await db.tabs.where('status').equals('open').toArray()).filter((t) => t.branchId === branchId).sort((a, b) => a.openedAt.localeCompare(b.openedAt)) : []
     const bills = await db.bills.where('tabId').anyOf(tabs.map((t) => t.id)).toArray()
-    return { terminal, tables, tabs, bills, names: new Map((await db.users.toArray()).map((u) => [u.id, u.name])) }
+    return { terminal, tables, tabs, bills, minGuests: await getSetting('serviceChargeMinGuests'), svcPct: await getSetting('serviceChargePct'), names: new Map((await db.users.toArray()).map((u) => [u.id, u.name])) }
   }, [])
   const [name, setName] = useState('')
   const [seats, setSeats] = useState('4')
@@ -46,7 +47,7 @@ export default function Tabs({ onGo }: { onGo: () => void }) {
       {data.tabs.length === 0 && <p className="empty">No open tabs. Add items on the Order screen and tap "Send to table".</p>}
       {data.tabs.map((t) => (
         <TabCard key={t.id} tab={t} bills={data.bills.filter((b) => b.tabId === t.id).sort((a, b) => b.version - a.version)} names={data.names}
-          others={data.tabs.filter((x) => x.id !== t.id)} free={free} terminalId={terminal.id} userId={user.id} now={now} onGo={onGo} />
+          others={data.tabs.filter((x) => x.id !== t.id)} free={free} terminalId={terminal.id} userId={user.id} now={now} onGo={onGo} minGuests={data.minGuests} svcPct={data.svcPct} />
       ))}
       <h3>Tables</h3>
       {can(user.role, 'manageSetup') && (
@@ -69,8 +70,8 @@ export default function Tabs({ onGo }: { onGo: () => void }) {
   )
 }
 
-function TabCard({ tab, bills, names, others, free, terminalId, userId, now, onGo }: {
-  tab: Tab; bills: Bill[]; names: Map<string, string>; others: Tab[]; free: { id: string; name: string }[]; terminalId: string; userId: string; now: number; onGo: () => void
+function TabCard({ tab, bills, names, others, free, terminalId, userId, now, onGo, minGuests, svcPct }: {
+  minGuests: number; svcPct: number; tab: Tab; bills: Bill[]; names: Map<string, string>; others: Tab[]; free: { id: string; name: string }[]; terminalId: string; userId: string; now: number; onGo: () => void
 }) {
   const { error, run } = useAction()
   const [panel, setPanel] = useState<'' | 'move' | 'merge' | 'split' | 'walkout'>('')
@@ -88,7 +89,7 @@ function TabCard({ tab, bills, names, others, free, terminalId, userId, now, onG
       const cartKey = `pos-cart-${terminalId}`
       const current = JSON.parse(localStorage.getItem(cartKey) ?? '{"lines":[]}')
       if ((current.lines ?? []).length > 0) throw new Error('Finish, hold or clear the cart on the Order screen first')
-      localStorage.setItem(cartKey, JSON.stringify({ ...emptyCart(), orderType: 'dine-in', table: tab.label, lines: partToCartLines(part, tab.lines) }))
+      localStorage.setItem(cartKey, JSON.stringify({ ...emptyCart(), orderType: 'dine-in', table: tab.label, lines: partToCartLines(part, tab.lines), ...((tab.guests ?? 0) >= minGuests && { serviceCharge: true }) }))
       localStorage.setItem(billKey(terminalId), JSON.stringify({ tabId: tab.id, billId: bill.id, partId, label: `${tab.label} · ${part.label}` }))
       onGo()
     })
@@ -98,6 +99,10 @@ function TabCard({ tab, bills, names, others, free, terminalId, userId, now, onG
       <div className="row between">
         <strong>Table {tab.label} <small>open {hm(minutesSince(tab.openedAt, now))} · {names.get(tab.cashierId)}</small></strong>
         <strong>{formatPeso(totals.due)} <small>of {formatPeso(totals.total)}</small></strong>
+      </div>
+      <div className="row">
+        <label>Guests <input aria-label="Guests" size={4} inputMode="numeric" value={tab.guests ?? ''} onChange={(e) => run(() => setGuests(tab.id, Number(e.target.value || 0), userId))} /></label>
+        {(tab.guests ?? 0) >= minGuests && <small>{minGuests}+ guests: the {svcPct}% service charge is added when you pay (untick it on the Order screen if the customer declines).</small>}
       </div>
       {rounds.map((r) => (
         <div key={r}>

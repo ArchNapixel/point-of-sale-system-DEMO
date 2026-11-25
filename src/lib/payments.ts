@@ -1,6 +1,6 @@
 // transfer = bank transfer (a deposit or a pre-order balance). deposit = a customer's earlier deposit applied to the bill.
 // platform = a delivery app owes us this money (a receivable, paid out weekly minus commission).
-export type PayMethod = 'cash' | 'gcash' | 'maya' | 'card' | 'transfer' | 'deposit' | 'platform' | 'giftcard'
+export type PayMethod = 'cash' | 'gcash' | 'maya' | 'card' | 'transfer' | 'deposit' | 'platform' | 'giftcard' | 'charge'
 export const PAY_METHODS: { id: PayMethod; label: string }[] = [
   { id: 'cash', label: 'Cash' },
   { id: 'gcash', label: 'GCash' },
@@ -10,6 +10,7 @@ export const PAY_METHODS: { id: PayMethod; label: string }[] = [
   { id: 'deposit', label: 'Deposit' },
   { id: 'platform', label: 'Delivery app' },
   { id: 'giftcard', label: 'Gift card' },
+  { id: 'charge', label: 'Charge account' },
 ]
 /** What a cashier can pick at the till. Deposit and Delivery app are applied by the pre-order and delivery flows, not typed in. */
 export const TENDER_METHODS = PAY_METHODS.filter((m) => m.id !== 'deposit' && m.id !== 'platform')
@@ -39,7 +40,9 @@ export function applyLines(total: number, lines: PayLine[]) {
     }
     if (!Number.isInteger(l.amount) || l.amount! <= 0) throw new Error('Enter the amount paid')
     if (l.amount! > remaining) throw new Error('That is more than the balance. An overpayment is refunded, not recorded here.')
-    if (l.method === 'giftcard') {
+    if (l.method === 'charge') {
+      if (!l.reference?.trim()) throw new Error('Pick the account to charge')
+    } else if (l.method === 'giftcard') {
       if (!normRef(l.reference)) throw new Error('Enter the gift card number')
     } else if (l.method === 'deposit') {
       if (!normRef(l.reference)) throw new Error('A deposit payment needs the deposit it comes from')
@@ -55,7 +58,7 @@ export function applyLines(total: number, lines: PayLine[]) {
       refs.add(ref)
     }
     remaining -= l.amount!
-    return { ...l, tendered: l.amount!, change: 0, status: l.method === 'card' || l.method === 'deposit' || l.method === 'giftcard' ? 'verified' : l.method === 'platform' ? 'receivable' : 'pending' } as AppliedLine
+    return { ...l, tendered: l.amount!, change: 0, status: l.method === 'card' || l.method === 'deposit' || l.method === 'giftcard' ? 'verified' : l.method === 'platform' || l.method === 'charge' ? 'receivable' : 'pending' } as AppliedLine
   })
   return { applied, remaining, change: applied.reduce((s, a) => s + a.change, 0) }
 }

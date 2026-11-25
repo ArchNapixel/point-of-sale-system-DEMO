@@ -27,6 +27,9 @@ export const DEFAULT_SETTINGS = {
   loyaltyExpiryDays: 365, // 0 = never
   loyaltyWarnDays: 30,
   loyaltyFastEarnPerDay: 6, // a customer earning from more orders than this in one day is flagged
+  serviceChargePct: 10, // an optional line for big groups; collected for staff, never part of sales
+  serviceChargeMinGuests: 10, // a tab with this many guests is offered the service charge
+  staffChargeLimitCentavos: pesos(500), // a staff member may charge this much to their pay account before a supervisor must approve
   queueMinutesPerItem: 2, // wait estimate at the cashier: minutes per waiting item
   storeName: 'DEMO Café',
   storeTin: '000-000-000-000',

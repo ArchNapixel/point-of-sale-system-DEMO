@@ -9,6 +9,7 @@ import { getSellContext } from './shifts'
 import { returnVoided } from './stock'
 import { reverseEarn } from './loyalty'
 import { creditCard } from './giftcards'
+import { creditAccount } from './accounts'
 
 /** Each order line with what the customer paid for it (after any Senior/PWD discount) and how much is still refundable. */
 export async function refundableLines(orderId: string) {
@@ -42,7 +43,7 @@ async function record(kind: 'void' | 'refund', i: Common & { picks?: Record<stri
   checkReason(i.reasonCode, i.reasonNote)
   const ctx = await getSellContext(i.terminalId)
   if (!ctx) throw new Error('Refunds come out of an open shift on this terminal. Open the business day and a shift first.')
-  const refund = await db.transaction('rw', [db.orders, db.refunds, db.queueItems, db.payments, db.approvals, db.users, db.settings, db.outbox, db.stockMoves, db.loyaltyLedger, db.giftCards, db.giftCardTx, db.customers], async () => {
+  const refund = await db.transaction('rw', [db.orders, db.refunds, db.queueItems, db.payments, db.approvals, db.users, db.settings, db.outbox, db.stockMoves, db.loyaltyLedger, db.giftCards, db.giftCardTx, db.customers, db.accountTx, db.accounts], async () => {
     const order = await db.orders.get(i.orderId)
     if (!order || order.status !== 'paid') throw new Error('This order is already voided')
     // ponytail: a bill paid from a tab was made when each round was sent, so it is refunded (as waste), never voided.
@@ -85,7 +86,15 @@ async function record(kind: 'void' | 'refund', i: Common & { picks?: Record<stri
     // Stamps or points earned on what is refunded are taken back (all of it for a void).
     await reverseEarn(order, amount, kind === 'void', id, i.userId)
     if (kind === 'void') {
-      for (const p of await db.payments.where('orderId').equals(i.orderId).toArray()) if (p.method === 'giftcard') await creditCard(p.reference!, p.amount, i.orderId, i.userId)
+      for (const p of await db.payments.where('orderId').equals(i.orderId).toArray()) {
+        if (p.method === 'giftcard') await creditCard(p.reference!, p.amount, i.orderId, i.userId)
+        if (p.method === 'charge') await creditAccount(p.reference!, p.amount, i.orderId, i.userId, ctx.day.date)
+      }
+    } else if (i.method === 'charge') {
+      // a refund of a charged sale goes back on the account it was charged to
+      const charged = (await db.payments.where('orderId').equals(i.orderId).toArray()).find((p) => p.method === 'charge')
+      if (!charged) throw new Error('This sale was not charged to an account')
+      await creditAccount(charged.reference!, amount, i.orderId, i.userId, ctx.day.date)
     } else if (i.method === 'giftcard') {
       if (!i.reference?.trim()) throw new Error('Enter the gift card number to put the refund on')
       await creditCard(i.reference, amount, i.orderId, i.userId)

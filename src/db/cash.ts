@@ -20,7 +20,7 @@ export async function recordCash(i: {
   if (!kind) throw new Error('Pick what kind of cash movement this is')
   if (!i.reason.trim()) throw new Error('A reason is required')
   if (i.kind === 'no-sale' ? i.amount !== 0 : !Number.isInteger(i.amount) || i.amount <= 0) throw new Error(i.kind === 'no-sale' ? 'A no-sale open moves no money' : 'Enter the amount')
-  const row = await db.transaction('rw', [db.shifts, db.cashMovements, db.orders, db.payments, db.refunds, db.approvals, db.users, db.settings, db.outbox, db.businessDays, db.deposits, db.giftCardTx], async () => {
+  const row = await db.transaction('rw', [db.shifts, db.cashMovements, db.orders, db.payments, db.refunds, db.approvals, db.users, db.settings, db.outbox, db.businessDays, db.deposits, db.giftCardTx, db.accountTx], async () => {
     const shift = await db.shifts.get(i.shiftId)
     if (!shift || shift.closedAt) throw new Error('Shift is not open')
     if (shift.cashierId !== i.userId) throw new Error('Only the cashier who owns this drawer can record cash movements')

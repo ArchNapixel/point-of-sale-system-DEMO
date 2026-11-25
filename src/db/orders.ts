@@ -12,7 +12,8 @@ import { newId } from '../lib/id'
 import { cartCount, compValue, compTotal, rewardUnits, type Cart } from '../lib/cart'
 import { checkReason } from '../lib/reasons'
 import { applyLines, normRef, type PayLine } from '../lib/payments'
-import { formatPeso } from '../lib/money'
+import { formatPeso, pct } from '../lib/money'
+import { chargeToAccount, overLimitBy } from './accounts'
 import { priceCart, validateStatutory } from '../lib/discount'
 import { audit } from './audit'
 import { getSetting } from './settings'
@@ -25,7 +26,7 @@ import { getSellContext } from './shifts'
  * Calling again with the same idempotency key returns the first result (line i uses `${key}:${i}`).
  */
 export async function payOrder(
-  terminalId: string, userId: string, cart: Cart, lines: PayLine[], idempotencyKey: string, buyer?: { name: string; tin: string }, approvals: { discount?: string; comp?: string } = {},
+  terminalId: string, userId: string, cart: Cart, lines: PayLine[], idempotencyKey: string, buyer?: { name: string; tin: string }, approvals: { discount?: string; comp?: string; charge?: string } = {},
   tab?: { tabId: string; billId: string; partId: string }, // paying one part of a tab's bill: its drinks and stock were taken when each round was sent
   fulfil?: { preOrderId: string }, // collecting a pre-order: its deposit is applied, and the bar may already have made it
 ) {
@@ -43,6 +44,10 @@ export async function payOrder(
   // A delivery fee is paid with the order but is never sales and is never discounted.
   const fee = cart.deliveryFee ?? 0
   if (!Number.isInteger(fee) || fee < 0) throw new Error('The delivery fee must be whole centavos')
+  // A service charge (optional, for big groups) and a tip go to staff: paid with the order, never sales, never discounted.
+  const service = cart.serviceCharge ? pct(total, await getSetting('serviceChargePct')) : 0
+  const tip = cart.tip ?? 0
+  if (!Number.isInteger(tip) || tip < 0) throw new Error('The tip must be whole centavos')
   const channel = cart.channelId ? await db.channels.get(cart.channelId) : undefined
   if (cart.channelId && !channel?.active) throw new Error('That delivery app is switched off')
   const pre = fulfil ? await db.preOrders.get(fulfil.preOrderId) : undefined
@@ -51,7 +56,7 @@ export async function payOrder(
     const same = cart.lines.length === pre.lines.length && cart.lines.every((l, k) => l.id === pre.lines[k].id) && fee === (pre.deliveryFee ?? 0)
     if (!same || priced.gross !== pre.lines.reduce((s, l) => s + lineTotal(l), 0)) throw new Error('The order no longer matches the pre-order. Start again from the pre-order.')
   }
-  const { applied, remaining, change } = applyLines(total + fee, lines)
+  const { applied, remaining, change } = applyLines(total + fee + service + tip, lines)
   if (remaining > 0) throw new Error(`${formatPeso(remaining)} still to pay. The order stays unpaid.`)
   if (channel ? applied.some((a) => a.method !== 'platform') : applied.some((a) => a.method === 'platform')) {
     throw new Error(channel ? `${channel.name} orders are paid by the app, not at the till` : 'Delivery app payment is only for delivery app orders')
@@ -60,6 +65,8 @@ export async function payOrder(
   const customer = cart.customerId ? await db.customers.get(cart.customerId) : undefined
   if (cart.customerId && !customer?.active) throw new Error('That customer profile is not active')
   const rewards = rewardUnits(cart)
+  const charges = applied.filter((a) => a.method === 'charge')
+  if (charges.length > 1) throw new Error('Charge one account per order')
   if (rewards > 0 && !customer) throw new Error('A loyalty reward needs a customer. Look one up first.')
   const depLines = applied.filter((a) => a.method === 'deposit')
   if (held) {
@@ -99,6 +106,8 @@ export async function payOrder(
     idempotencyKey,
     ...(tab && { tabId: tab.tabId, billId: tab.billId }),
     ...(fee > 0 && { deliveryFee: fee }),
+    ...(service > 0 && { serviceCharge: service }),
+    ...(tip > 0 && { tip }),
     ...(channel && { channelId: channel.id, channelName: channel.name, commissionPct: channel.commissionPct }),
     ...(pre && { preOrderId: pre.id }),
     ...(customer && { customerId: customer.id }),
@@ -112,7 +121,7 @@ export async function payOrder(
     method: l.method,
     amount: l.amount,
     tendered: l.tendered,
-    ...(l.reference && { reference: normRef(l.reference) }),
+    ...(l.reference && { reference: l.method === 'charge' ? l.reference.trim() : normRef(l.reference) }), // an account id is case-sensitive
     ...(l.approvalCode && { approvalCode: normRef(l.approvalCode) }),
     ...(l.last4 && { last4: l.last4.trim() }),
     status: l.status,
@@ -123,7 +132,7 @@ export async function payOrder(
   }))
   let sale: Awaited<ReturnType<typeof deductSale>> | undefined
   let earned = 0
-  await db.transaction('rw', [db.orders, db.payments, db.outbox, db.discountLog, db.counters, db.queueItems, db.queueEvents, db.items, db.categories, db.approvals, db.users, db.settings, db.promos, db.promoUses, db.stockMoves, db.recipes, db.ingredients, db.tabs, db.bills, db.preOrders, db.deposits, db.channels, db.customers, db.loyaltyLedger, db.giftCards, db.giftCardTx], async () => {
+  await db.transaction('rw', [db.orders, db.payments, db.outbox, db.discountLog, db.counters, db.queueItems, db.queueEvents, db.items, db.categories, db.approvals, db.users, db.settings, db.promos, db.promoUses, db.stockMoves, db.recipes, db.ingredients, db.tabs, db.bills, db.preOrders, db.deposits, db.channels, db.customers, db.loyaltyLedger, db.giftCards, db.giftCardTx, db.accounts, db.accountTx], async () => {
     const emp = order.employee
     if (emp) {
       const who = await db.users.get(emp.employeeId)
@@ -151,6 +160,13 @@ export async function payOrder(
     for (const g of applied.filter((a) => a.method === 'giftcard')) await redeemCard(g.reference!, g.amount, order.id, userId)
     if (customer && rewards > 0) await redeemRewards(order.id, customer.id, rewards, userId)
     if (customer) earned = await earnOrder(order, customer.id, userId)
+    // Charging an account over its limit needs a supervisor PIN for the part over; never silently, never a hard stop at the till.
+    for (const c of charges) {
+      const over = await overLimitBy(c.reference!, c.amount)
+      const approvedBy = over > 0 ? await consumeApproval(userId, 'charge', over, order.id, approvals.charge) : undefined
+      if (over > 0 && !approvedBy) throw new Error('This charge is over the account limit. It needs a supervisor PIN.')
+      await chargeToAccount(c.reference!, c.amount, order.id, userId, order.businessDate, approvedBy)
+    }
     if (held) await db.deposits.update(held.id, { status: 'applied', appliedOrderId: order.id })
     if (pre) await db.preOrders.update(pre.id, { status: 'fulfilled', orderId: order.id })
     if (tab) {

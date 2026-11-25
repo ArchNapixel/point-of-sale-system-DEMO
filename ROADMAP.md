@@ -145,7 +145,7 @@ Because there is no seed data, you need screens to enter it.
 - [ ] Per-terminal series across sync, late-sync flagging, print queue with retry
 
 ### 4E — Misc
-- [ ] Training mode, service charge, tips report, charge accounts
+- [x] Training mode, service charge, tips report, charge accounts
 
 **Demo moments:** cake split three ways · offline sale syncs with no duplicate
 

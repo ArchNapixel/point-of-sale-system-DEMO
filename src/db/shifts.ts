@@ -176,7 +176,9 @@ export async function expectedCash(shiftId: string): Promise<number> {
   const depositOut = deps.filter((d) => d.status === 'refunded' && d.settled?.shiftId === shiftId && d.settled.method === 'cash').reduce((s, d) => s + d.amount, 0)
   // A gift card sold for cash puts that cash in this drawer (it is a liability, not a sale).
   const giftIn = (await db.giftCardTx.filter((t) => t.kind === 'issue' && t.paid?.shiftId === shiftId && t.paid.method === 'cash').toArray()).reduce((s, t) => s + t.amount, 0)
-  return shift.openingTotal + cash.reduce((s, p) => s + p.amount, 0) - refunded + moved + depositIn - depositOut + giftIn
+  // An account paying its bill in cash puts that cash in this drawer.
+  const accountIn = (await db.accountTx.filter((t) => t.kind === 'payment' && t.shiftId === shiftId && t.method === 'cash').toArray()).reduce((s, t) => s - t.amount, 0)
+  return shift.openingTotal + cash.reduce((s, p) => s + p.amount, 0) - refunded + moved + depositIn - depositOut + giftIn + accountIn
 }
 
 /**

@@ -27,6 +27,7 @@ import ItemPicker from './ItemPicker'
 import Receipt from './Receipt'
 import ApprovalPrompt from './ApprovalPrompt'
 import { addRound } from '../db/tabs'
+import { overLimitBy } from '../db/accounts'
 import CustomerPicker from './CustomerPicker'
 import { customerBalance } from '../db/loyalty'
 import { createPreOrder } from '../db/preorders'
@@ -68,7 +69,12 @@ export default function Order() {
 }
 
 /** Takes one or more payment lines (split tender). The key is made once per open panel, so a double tap can't save two orders. */
-function PayPanel({ total, onPay, onCancel, initialLines }: { total: number; initialLines?: PayLine[]; onPay: (lines: PayLine[], key: string, buyer: { name: string; tin: string }) => Promise<unknown>; onCancel: () => void }) {
+export function PayPanel({ total: base, onPay, onCancel, initialLines, practice }: { total: number; initialLines?: PayLine[]; practice?: boolean; onPay: (lines: PayLine[], key: string, buyer: { name: string; tin: string }, tip: number) => Promise<unknown>; onCancel: () => void }) {
+  const [tip, setTip] = useState('')
+  const [fx, setFx] = useState(false)
+  const accounts = useLiveQuery(() => db.accounts.filter((a) => a.active).toArray(), [])
+  const tipCents = practice || !tip.trim() ? 0 : parsePesos(tip) ?? 0 // a tip is paid on top, for staff
+  const total = base + tipCents
   const [lines, setLines] = useState<PayLine[]>(initialLines ?? [])
   const [method, setMethod] = useState<PayMethod>('cash')
   const [f, setF] = useState({ amount: '', ref: '', code: '', last4: '' })
@@ -103,9 +109,10 @@ function PayPanel({ total, onPay, onCancel, initialLines }: { total: number; ini
         </div>
       ))}
       <div className="seg">
-        {TENDER_METHODS.map((m) => (
-          <button key={m.id} aria-pressed={method === m.id} onClick={() => { setMethod(m.id); setF({ amount: '', ref: '', code: '', last4: '' }) }}>{m.label}</button>
+        {TENDER_METHODS.filter((m) => !practice || (m.id !== 'giftcard' && m.id !== 'charge')).map((m) => (
+          <button key={m.id} aria-pressed={method === m.id} onClick={() => { setMethod(m.id); setFx(false); setF({ amount: '', ref: '', code: '', last4: '' }) }}>{m.label}</button>
         ))}
+        <button onClick={() => setFx(true)}>Foreign currency</button>
       </div>
       {method === 'cash' && (
         <div className="row">
@@ -116,16 +123,25 @@ function PayPanel({ total, onPay, onCancel, initialLines }: { total: number; ini
       {field(method === 'cash' ? 'Cash tendered' : `Amount (blank = ${formatPeso(balance)})`, 'amount', { inputMode: 'decimal', autoFocus: true })}
       {(method === 'gcash' || method === 'maya' || method === 'transfer') && field('Reference number', 'ref')}
       {method === 'giftcard' && field('Gift card number (GC-1234-5678)', 'ref')}
+      {method === 'charge' && (
+        <select aria-label="Charge account" value={f.ref} onChange={(e) => setF({ ...f, ref: e.target.value })}>
+          <option value="">Pick the account</option>
+          {(accounts ?? []).map((a) => <option key={a.id} value={a.id}>{a.name} ({a.kind})</option>)}
+        </select>
+      )}
+      {fx && <small role="status">Foreign currency is not accepted in the demo. Ask for pesos, GCash, Maya or a card.</small>}
       {method === 'card' && <>{field('Approval code', 'code')}{field('Last 4 digits', 'last4', { inputMode: 'numeric', maxLength: 4 })}</>}
       <p className="change" style={{ fontSize: '2rem' }}>
         {!result ? '' : result.remaining > 0 ? `Still to pay ${formatPeso(result.remaining)}` : `Change ${formatPeso(result.change)}`}
       </p>
       {problem && <small>{problem}</small>}
-      <details>
+      {!practice && <input aria-label="Tip" size={12} inputMode="decimal" placeholder="Tip ₱ (optional)" value={tip} onChange={(e) => setTip(e.target.value)} />}
+      {tipCents > 0 && <small>Includes a tip of {formatPeso(tipCents)} for staff. It is not a sale.</small>}
+      {!practice && <details>
         <summary>Buyer name / TIN (business invoice)</summary>
         <input aria-label="Buyer name" placeholder="Buyer name" value={buyer.name} onChange={(e) => setBuyer({ ...buyer, name: e.target.value })} />
         <input aria-label="Buyer TIN" placeholder="Buyer TIN" value={buyer.tin} onChange={(e) => setBuyer({ ...buyer, tin: e.target.value })} />
-      </details>
+      </details>}
       <Err msg={error} />
       <div className="row">
         <button onClick={onCancel}>Back</button>
@@ -138,7 +154,7 @@ function PayPanel({ total, onPay, onCancel, initialLines }: { total: number; ini
         <button
           className="primary"
           disabled={busy || !result || result.remaining > 0}
-          onClick={async () => { setBusy(true); await run(() => onPay(all, key, buyer)); setBusy(false) }}
+          onClick={async () => { setBusy(true); await run(() => onPay(all, key, buyer, tipCents)); setBusy(false) }}
         >
           Confirm payment
         </button>
@@ -306,6 +322,9 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
   const [fulfil, setFulfil] = useState<FulfilContext | null>(() => loadFulfil(terminalId))
   const [preSaving, setPreSaving] = useState(false)
   const [pickingCustomer, setPickingCustomer] = useState(false)
+  const svcPct = useLiveQuery(() => getSetting('serviceChargePct'), [])
+  const [chargeAsk, setChargeAsk] = useState<{ over: number } | null>(null)
+  const [chargeAppr, setChargeAppr] = useState<string | null>(null)
   const cust = useLiveQuery(async () => {
     const c = cart.customerId ? await db.customers.get(cart.customerId) : undefined
     return c ? { c, ...(await customerBalance(c.id)) } : null
@@ -340,7 +359,7 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
     localStorage.setItem(cartKey(terminalId), JSON.stringify(cart))
   }, [cart, terminalId])
 
-  if (!rawMenu || !channels || !channelPrices || !held || vat === undefined || !open || perItem === undefined || !limits || !promos || empPct === undefined || !staff) return null
+  if (svcPct === undefined || !rawMenu || !channels || !channelPrices || !held || vat === undefined || !open || perItem === undefined || !limits || !promos || empPct === undefined || !staff) return null
   const bar = waitEstimate(open, 'bar', perItem)
   const kitchen = waitEstimate(open, 'kitchen', perItem)
   // One reduction only: Senior/PWD, staff or the best promo, whichever gives the lowest price. Re-worked on every cart change.
@@ -354,6 +373,7 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
   // At a delivery app's prices, the same menu shows the app's price for each size (add-on prices stay as they are).
   const menu = channelPrices.size === 0 ? rawMenu : rawMenu.map((c) => ({ ...c, items: c.items.map((i) => ({ ...i, variants: i.variants.map((v) => ({ ...v, price: channelPrices.get(v.id) ?? v.price })) })) }))
   const fee = cart.deliveryFee ?? 0
+  const service = cart.serviceCharge ? Math.round((priced.total * svcPct) / 100) : 0
   const category = menu.find((c) => c.id === catId) ?? menu[0]
 
   const commit = (next: Cart) => {
@@ -535,6 +555,8 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
           <strong>{formatPeso(priced.total)}</strong>
         </div>
         {fee > 0 && <div className="row between"><small>Delivery fee (not a sale)</small><strong>{formatPeso(fee)}</strong></div>}
+        <label><input type="checkbox" checked={!!cart.serviceCharge} onChange={(e) => setCart({ ...cart, serviceCharge: e.target.checked || undefined })} /> Service charge {svcPct}% <small>(for staff, not a sale)</small></label>
+        {service > 0 && <div className="row between"><small>Service charge</small><strong>{formatPeso(service)}</strong></div>}
         {priced.discount && (
           <div className="row between">
             <small>{priced.discount.kind === 'senior' ? 'Senior' : 'PWD'} discount ({priced.discount.name}) −{formatPeso(priced.discount.reduction)}</small>
@@ -588,6 +610,10 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
         {discounting && (
           <DiscountPanel cart={cart} vat={vat} onCancel={() => setDiscounting(false)} onApply={(discount) => { setCart({ ...cart, discount }); setDiscounting(false) }} />
         )}
+        {chargeAsk && (
+          <ApprovalPrompt action="charge" amount={chargeAsk.over} requesterId={user.id} title={`The account is ${formatPeso(chargeAsk.over)} over its limit: supervisor PIN needed.`}
+            onCancel={() => setChargeAsk(null)} onApproved={(a) => { setChargeAppr(a.id); setChargeAsk(null) }} />
+        )}
         {asking && (
           <ApprovalPrompt
             action={asking}
@@ -616,17 +642,23 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
         )}
         {paying && !cart.channelId && (
           <PayPanel
-            total={priced.total + fee}
+            total={priced.total + fee + service}
             initialLines={fulfil?.depositId ? [{ method: 'deposit', amount: fulfil.depositAmount, reference: fulfil.depositId }] : undefined}
             onCancel={() => setPaying(false)}
-            onPay={async (lines, key, buyer) => {
-              const { order, payments, change, earned } = await payOrder(terminalId, user.id, cart, lines, key, buyer, { discount: askDiscount ? undefined : approval?.id, comp: askComp ? undefined : compApproval?.id }, bill ? { tabId: bill.tabId, billId: bill.billId, partId: bill.partId } : undefined, fulfil ? { preOrderId: fulfil.preOrderId } : undefined)
+            onPay={async (lines, key, buyer, tip) => {
+              const chg = lines.find((l) => l.method === 'charge')
+              if (chg && !chargeAppr) {
+                const over = await overLimitBy(chg.reference!, chg.amount ?? 0)
+                if (over > 0) { setChargeAsk({ over }); throw new Error('That is over the account limit. Get a supervisor PIN, then confirm again.') }
+              }
+              const { order, payments, change, earned } = await payOrder(terminalId, user.id, { ...cart, tip: tip || undefined }, lines, key, buyer, { discount: askDiscount ? undefined : approval?.id, comp: askComp ? undefined : compApproval?.id, charge: chargeAppr ?? undefined }, bill ? { tabId: bill.tabId, billId: bill.billId, partId: bill.partId } : undefined, fulfil ? { preOrderId: fulfil.preOrderId } : undefined)
               if (bill) { localStorage.removeItem(billKey(terminalId)); setBill(null) }
               if (fulfil) { localStorage.removeItem(fulfilKey(terminalId)); setFulfil(null) }
               setCart(emptyCart())
               setHistory([])
               setApproval(null)
               setCompApproval(null)
+              setChargeAppr(null)
               setPaying(false)
               setDone({ orderId: order.id, number: order.number, change: change ?? 0, pending: payments.some((p) => p.status === 'pending'), earned: earned ?? 0 })
             }}

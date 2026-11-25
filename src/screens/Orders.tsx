@@ -25,7 +25,7 @@ export default function Orders() {
     const refunds = await db.refunds.where('orderId').anyOf(list.map((o) => o.id)).toArray()
     return list.map((o) => ({ ...o, payments: pays.filter((p) => p.orderId === o.id), refunded: refunds.filter((r) => r.orderId === o.id).reduce((s, r) => s + r.amount, 0) }))
   }, [q])
-  const log = useLiveQuery(() => db.discountLog.orderBy('at').reverse().limit(50).toArray(), [])
+  const log = useLiveQuery(async () => (await db.discountLog.toArray()).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 50), [])
   const approvals = useLiveQuery(async () => {
     const rows = await db.approvals.orderBy('at').reverse().limit(50).toArray()
     const names = new Map((await db.users.toArray()).map((u) => [u.id, u.name]))

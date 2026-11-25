@@ -3,12 +3,14 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useAuth } from '../auth'
 import { db } from '../db/db'
 import { getZReport, loadReport, runXReport, seniorPwdLog } from '../db/reports'
+import { tipReport } from '../db/tips'
+import { ymdLocal } from '../lib/promos'
 import { can } from '../lib/roles'
 import { formatPeso } from '../lib/money'
 import { Err, useAction } from '../ui'
 import ReportView from './ReportView'
 
-type Mode = 'dashboard' | 'x' | 'z'
+type Mode = 'dashboard' | 'x' | 'z' | 'tips'
 const when = (iso: string) => new Date(iso).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })
 
 export default function Reports() {
@@ -22,10 +24,12 @@ export default function Reports() {
         {can(user.role, 'viewAllBranches') && <button aria-pressed={mode === 'dashboard'} onClick={() => setMode('dashboard')}>Owner dashboard</button>}
         <button aria-pressed={mode === 'x'} onClick={() => setMode('x')}>X: this shift</button>
         <button aria-pressed={mode === 'z'} onClick={() => setMode('z')}>Z: closed days</button>
+        <button aria-pressed={mode === 'tips'} onClick={() => setMode('tips')}>Tips and service charge</button>
       </div>
       {mode === 'dashboard' && <Dashboard />}
       {mode === 'x' && <XReport userId={user.id} />}
       {mode === 'z' && <ZReports userId={user.id} />}
+      {mode === 'tips' && <TipReport />}
     </section>
   )
 }
@@ -125,6 +129,33 @@ function ZReports({ userId }: { userId: string }) {
         {days.map((d) => <option key={d.id} value={d.id}>{d.date}</option>)}
       </select>
       {z && <ReportView title={`Z report ${z.date}, closed ${when(z.at)}`} report={z.report} onPrint />}
+    </>
+  )
+}
+
+/** Tips and service charge are staff money, never sales. Each day's pool is shared by hours worked that day. */
+function TipReport() {
+  const [from, setFrom] = useState(ymdLocal(new Date(Date.now() - 13 * 86_400_000)))
+  const [to, setTo] = useState(ymdLocal(new Date()))
+  const r = useLiveQuery(() => tipReport(from, to), [from, to])
+  if (!r) return null
+  return (
+    <>
+      <div className="row">
+        <label>From <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
+        <label>To <input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label>
+      </div>
+      <p><strong>Tips {formatPeso(r.tips)} · service charge {formatPeso(r.service)}</strong> (not in sales){r.unshared > 0 && <> · <strong>{formatPeso(r.unshared)} on days with no clock-ins: not shared yet</strong></>}</p>
+      {r.days.length === 0 && <p className="empty">No tips or service charge in this range.</p>}
+      <ul className="lines">
+        {r.days.map((d) => <li key={d.date}>{d.date}: tips {formatPeso(d.tips)} + service {formatPeso(d.service)} = {formatPeso(d.pool)}{!d.shared && ' · no clock-ins to share by'}</li>)}
+      </ul>
+      {r.people.length > 0 && (
+        <div className="card">
+          <h4>Share by hours worked</h4>
+          <table className="compare"><tbody>{r.people.map((p) => <tr key={p.userId}><th>{p.name}</th><td>{formatPeso(p.amount)}</td></tr>)}</tbody></table>
+        </div>
+      )}
     </>
   )
 }

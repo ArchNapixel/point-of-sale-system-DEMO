@@ -97,6 +97,8 @@ export type Order = {
   commissionPct?: number // the app's commission when it was sold (a setting per platform, copied here)
   preOrderId?: string
   customerId?: string // a customer who agreed to be saved: loyalty is earned and used against this
+  serviceCharge?: number // optional % for big groups: collected for staff, never sales, never discounted
+  tip?: number // a tip added on a card or e-wallet: collected for staff, apart from sales
   tabId?: string // paid from a tab: its drinks were sent and its stock taken when each round was added, so paying does neither again
   billId?: string
   status: 'paid' | 'void' // a voided order keeps its invoice number
@@ -272,7 +274,7 @@ export type Tab = {
   status: 'open' | 'closed' | 'merged' | 'walkout'
   openedAt: string; openedBy: string
   shiftId: string; cashierId: string // who is responsible now: changes at a shift change
-  lines: TabLine[]; rounds: number
+  lines: TabLine[]; rounds: number; guests?: number
   settled: Record<string, number> // line id -> centavos already paid by earlier bills
   events: TabEvent[]
   mergedInto?: string
@@ -327,6 +329,15 @@ export type GiftCardTx = {
   orderId?: string; at: string; by: string
   paid?: { method: PayMethod; reference?: string; shiftId: string } // the purchase: how it was paid and in whose drawer
 }
+// A charge account: a company that orders on credit and pays monthly, or a staff member whose meals come off their pay.
+export type Account = { id: string; kind: 'corporate' | 'staff'; name: string; creditLimit: number; userId?: string; note?: string; active: boolean }
+// Movements on an account. + means they owe us more, - means they owe less. The balance is the sum.
+export type AccountTx = {
+  id: string; accountId: string; kind: 'charge' | 'payment' | 'refund'; amount: number; orderId?: string
+  at: string; by: string; businessDate: string; method?: PayMethod; reference?: string; shiftId?: string; approvedBy?: string
+}
+// A sale rung up in training mode: no invoice number, no stock, no money, never in any report.
+export type PracticeSale = { id: string; userId: string; at: string; lines: CartLine[]; total: number; payments: { method: PayMethod; amount: number }[]; change: number }
 export type InvoicePrint = { id: string; orderId: string; userId: string; at: string; kind: 'original' | 'reprint'; approvedBy?: string }
 export type Payment = {
   id: string
@@ -444,6 +455,9 @@ export const db = new Dexie('demo-pos') as Dexie & {
   loyaltyLedger: EntityTable<LoyaltyEntry, 'id'>
   giftCards: EntityTable<GiftCard, 'id'>
   giftCardTx: EntityTable<GiftCardTx, 'id'>
+  accounts: EntityTable<Account, 'id'>
+  accountTx: EntityTable<AccountTx, 'id'>
+  practiceSales: EntityTable<PracticeSale, 'id'>
   channelPrices: Table<ChannelPrice, [string, string]>
   channelPayouts: EntityTable<ChannelPayout, 'id'>
   channelChecks: Table<ChannelCheck, [string, string]>
@@ -560,4 +574,9 @@ db.version(25).stores({
   loyaltyLedger: 'id, customerId, orderId, at',
   giftCards: 'id, &number',
   giftCardTx: 'id, cardId, orderId',
+})
+db.version(26).stores({
+  accounts: 'id, name',
+  accountTx: 'id, accountId, orderId, businessDate',
+  practiceSales: 'id, userId, at',
 })

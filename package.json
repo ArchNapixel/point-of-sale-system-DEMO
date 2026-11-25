@@ -8,11 +8,19 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "api:migrate": "node --env-file=.env.local api/migrate.ts",
+    "api:dev": "node --env-file=.env.local api/server.ts",
+    "api:check": "tsc -p api"
   },
   "dependencies": {
+    "@hono/node-server": "^2.1.11",
+    "@neon/config": "^1.14.7",
+    "@neon/env": "^2.1.10",
+    "@neondatabase/serverless": "^1.2.1",
     "dexie": "^4.4.7",
     "dexie-react-hooks": "^4.4.0",
+    "hono": "^4.13.22",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },

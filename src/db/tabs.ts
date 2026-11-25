@@ -150,6 +150,13 @@ export async function setLineSeat(tabId: string, lineId: string, seat: number | 
   await supersede(tabId)
 }
 
+/** How many people are at the table: a big group is offered the service charge when it is billed. */
+export async function setGuests(tabId: string, guests: number, userId: string) {
+  if (!Number.isInteger(guests) || guests < 0 || guests > 500) throw new Error('Guests must be 0 to 500')
+  const t = await openTab(tabId)
+  await db.tabs.update(tabId, { guests, events: [...t.events, ev(userId, 'seat', { guests })] })
+}
+
 // ---- bills ----
 export type SplitRequest =
   | { mode: 'whole' }

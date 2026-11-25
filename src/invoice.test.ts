@@ -50,7 +50,7 @@ describe('invoice numbers', () => {
 describe('invoice figures', () => {
   it('VAT café: ₱112 sale → VATable ₱100 + VAT ₱12', async () => {
     const { order } = await payOrder(t1, 'u1', cart(11200), cash(11200), 'k1')
-    expect(invoiceFigures(order)).toEqual({ vatRegistered: true, vatable: 10000, vat: 1200, vatExempt: 0, discount: 0, other: 0, fee: 0, due: 11200 })
+    expect(invoiceFigures(order)).toEqual({ vatRegistered: true, vatable: 10000, vat: 1200, vatExempt: 0, discount: 0, other: 0, fee: 0, service: 0, tip: 0, due: 11200 })
   })
   it('senior latte: VAT-exempt ₱150, discount ₱30, due ₱120 — adds up', async () => {
     const c = { ...cart(), discount: { kind: 'senior' as const, name: 'Lola', idNumber: 'SC1', signed: true, picks: { a: 1 } } }
@@ -67,7 +67,7 @@ describe('invoice figures', () => {
     await setSetting('vatRegistered', false)
     const { order } = await payOrder(t1, 'u1', cart(), cash(16800), 'k1')
     await setSetting('vatRegistered', true)
-    expect(invoiceFigures(order)).toEqual({ vatRegistered: false, sales: 16800, discount: 0, other: 0, fee: 0, due: 16800 })
+    expect(invoiceFigures(order)).toEqual({ vatRegistered: false, sales: 16800, discount: 0, other: 0, fee: 0, service: 0, tip: 0, due: 16800 })
   })
   it('stores the buyer name and TIN only when given', async () => {
     expect((await payOrder(t1, 'u1', cart(), cash(16800), 'k1')).order.buyer).toBeUndefined()
