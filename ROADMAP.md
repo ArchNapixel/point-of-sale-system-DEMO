@@ -121,8 +121,8 @@ Because there is no seed data, you need screens to enter it.
 - [x] Suppliers, purchase orders, receiving (short/rejected/no-PO), weighted average cost
 
 ### 3E — Counts and variance
-- [ ] Blind stock count; variance report in units and pesos
-- [ ] Cup-count variance; cost per drink and margin
+- [x] Blind stock count; variance report in units and pesos
+- [x] Cup-count variance; cost per drink and margin
 
 **Demo moments:** oat milk runs out → modifier disabled · cup-count variance flags a missing sale
 

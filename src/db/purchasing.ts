@@ -8,6 +8,7 @@ import { alertNegative, writeMoves } from './stock'
 import { syncModifierAvailability } from './stock'
 import { businessDate } from './businessDate'
 import { getSetting } from './settings'
+import { lowMarginsFor } from './costs'
 
 // ---- suppliers ----
 export async function createSupplier(name: string, termsDays: number, userId: string): Promise<Supplier> {
@@ -164,6 +165,9 @@ export async function receiveDelivery(i: {
   await audit({ userId: i.userId, action: 'stock.receive.delivery', ref: r.id, detail: { total: r.total, poId: i.poId, rejected: lines.filter((l) => l.rejectedQty > 0).length, noPo: !i.poId } })
   await alertNegative(crossed, i.userId)
   await syncModifierAvailability(i.userId)
+  // Supplier raised prices? Tell the owner which drinks are now under the target margin.
+  const low = await lowMarginsFor(lines.filter((l) => l.receivedQty > 0).map((l) => l.ingredientId)).catch(() => [])
+  if (low.length > 0) await audit({ userId: i.userId, action: 'margin.alert', ref: r.id, detail: { drinks: low.map((d) => d.name) } })
   return r
 }
 

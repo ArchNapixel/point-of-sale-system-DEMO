@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useAuth } from '../auth'
 import { db, type Ingredient } from '../db/db'
 import { setPar } from '../db/purchasing'
+import { setCup } from '../db/counts'
 import { addUnit, createIngredient, renameIngredient, setIngredientActive, setUnitActive, setUnitFactor } from '../db/ingredients'
 import { BASE_UNITS, toBase, type BaseUnit } from '../lib/units'
 import { can } from '../lib/roles'
@@ -106,6 +107,7 @@ function IngredientCard({ ing, canEdit, userId }: { ing: Ingredient; canEdit: bo
         </form>
       )}
       <div className="row">
+        {canEdit && <label><input type="checkbox" checked={!!ing.cup} onChange={(e) => run(() => setCup(ing.id, e.target.checked, userId))} /> counts one drink (cups)</label>}
         <small>Try it:</small>
         <input aria-label="Quantity to convert" size={6} inputMode="decimal" value={try_.qty} onChange={(e) => setTry({ ...try_, qty: e.target.value })} />
         <select aria-label="Unit to convert" value={tryUnit} onChange={(e) => setTry({ ...try_, unit: e.target.value })}>

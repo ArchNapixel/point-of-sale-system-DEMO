@@ -18,6 +18,7 @@ export const DEFAULT_SETTINGS = {
   employeeDiscountDailyCapCentavos: pesos(300), // most one employee can save per business day
   autoLockMinutes: 5, // idle time before the screen locks and asks for a PIN; 0 = never
   longShiftHours: 12, // a clock-in running longer than this is flagged for a supervisor to fix
+  targetMarginPct: 60, // a drink whose margin (without VAT) falls below this is flagged
   queueMinutesPerItem: 2, // wait estimate at the cashier: minutes per waiting item
   storeName: 'DEMO Café',
   storeTin: '000-000-000-000',

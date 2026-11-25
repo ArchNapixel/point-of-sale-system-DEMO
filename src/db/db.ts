@@ -202,6 +202,7 @@ export type Ingredient = {
   active: boolean
   avgCostMilli?: number // weighted average cost in thousandths of a centavo per base unit (so a fraction of a centavo per ml stays exact). Set by receiving.
   par?: number // wanted on hand, in base units; purchase orders suggest the gap
+  cup?: boolean // counts one drink served (the cup): its count variance shows drinks that went out without a sale
 }
 // One version of a recipe. Saving makes a new version; old ones stay so old sales keep what they used (rule 6).
 export type Recipe = { id: string; kind: 'variant' | 'modifier'; refId: string; version: number; lines: RecipeLine[]; at: string; by: string }
@@ -239,6 +240,14 @@ export type Receipt = {
   needsReview: boolean; reviewedBy?: string // delivery without a PO waits for a supervisor
   dueDate: string // arrival date + the supplier's terms
   paidAt?: string; paidBy?: string; payMethod?: 'cash' | 'transfer'; payRef?: string; cashMovementId?: string
+  idempotencyKey: string
+}
+// A physical count. It is blind: the counter types what they see and expected is worked out afterwards, as of the moment of counting,
+// so sales rung up after that time do not distort the variance. Applying it writes one 'count' movement per difference.
+export type StockCount = {
+  id: string; branchId: string; countedAt: string; at: string; by: string
+  lines: { ingredientId: string; counted: number; expected: number; variance: number; avgCostMilli?: number }[]
+  status: 'submitted' | 'applied'; appliedAt?: string; appliedBy?: string
   idempotencyKey: string
 }
 export type InvoicePrint = { id: string; orderId: string; userId: string; at: string; kind: 'original' | 'reprint'; approvedBy?: string }
@@ -348,6 +357,7 @@ export const db = new Dexie('demo-pos') as Dexie & {
   recipes: EntityTable<Recipe, 'id'>
   stockMoves: EntityTable<StockMove, 'id'>
   suppliers: EntityTable<Supplier, 'id'>
+  stockCounts: EntityTable<StockCount, 'id'>
   purchaseOrders: EntityTable<PurchaseOrder, 'id'>
   receipts: EntityTable<Receipt, 'id'>
   promoUses: EntityTable<PromoUse, 'id'>
@@ -438,4 +448,7 @@ db.version(21).stores({
   suppliers: 'id, name',
   purchaseOrders: 'id, supplierId, status',
   receipts: 'id, poId, supplierId, dueDate, &idempotencyKey',
+})
+db.version(22).stores({
+  stockCounts: 'id, branchId, countedAt, &idempotencyKey',
 })

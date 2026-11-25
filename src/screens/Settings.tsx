@@ -17,6 +17,7 @@ const FIELDS: { key: SettingKey; label: string; kind: 'bool' | 'pesos' | 'int' |
   { key: 'employeeDiscountDailyCapCentavos', label: 'Staff discount cap per person per day (₱)', kind: 'pesos' },
   { key: 'autoLockMinutes', label: 'Auto-lock after idle minutes (0 = never)', kind: 'int', min: 0, max: 240 },
   { key: 'longShiftHours', label: 'Flag clock-ins longer than (hours)', kind: 'int', min: 1, max: 48 },
+  { key: 'targetMarginPct', label: 'Target margin per drink (%)', kind: 'int', min: 0, max: 100 },
   { key: 'queueMinutesPerItem', label: 'Wait estimate: minutes per queued item', kind: 'int', min: 1, max: 60 },
   { key: 'storeName', label: 'Store name (on invoices)', kind: 'text' },
   { key: 'storeTin', label: 'Store TIN', kind: 'text' },
