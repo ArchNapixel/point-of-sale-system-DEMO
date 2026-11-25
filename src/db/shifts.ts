@@ -59,15 +59,34 @@ export async function openBusinessDay(branchId: string, userId: string): Promise
   })
 }
 
+/**
+ * What still stops the day from closing: open shifts, held carts and e-wallet payments nobody verified yet.
+ * ponytail: the workflow also lists open tabs; there are no tabs in this build, so nothing to check for them.
+ */
+export async function dayCloseChecklist(dayId: string) {
+  const day = await db.businessDays.get(dayId)
+  if (!day) throw new Error('Business day not found')
+  const shifts = await db.shifts.where('businessDayId').equals(dayId).toArray()
+  const shiftIds = new Set(shifts.map((s) => s.id))
+  const orderIds = (await db.orders.where('businessDayId').equals(dayId).toArray()).map((o) => o.id)
+  const openShifts = shifts.filter((s) => !s.closedAt)
+  const heldCarts = (await db.heldCarts.where('status').equals('held').toArray()).filter((h) => shiftIds.has(h.shiftId))
+  const pendingPayments = (await db.payments.where('orderId').anyOf(orderIds).toArray()).filter((p) => p.status === 'pending')
+  return { openShifts, heldCarts, pendingPayments, ok: openShifts.length + heldCarts.length + pendingPayments.length === 0 }
+}
+
+/** Closing is blocked until the checklist is clear (rule 1 is about sales; the day close is where loose ends are tied up). */
 export async function closeBusinessDay(dayId: string, userId: string) {
+  const list = await dayCloseChecklist(dayId)
+  if (list.openShifts.length > 0) {
+    const t = await db.terminals.get(list.openShifts[0].terminalId)
+    throw new Error(`Close the open shift on ${t?.name ?? 'a terminal'} first`)
+  }
+  if (list.heldCarts.length > 0) throw new Error(`${list.heldCarts.length} held cart(s) are still open. Pick them up or discard them first.`)
+  if (list.pendingPayments.length > 0) throw new Error(`${list.pendingPayments.length} GCash/Maya payment(s) are still pending verification.`)
   return db.transaction('rw', TABLES, async () => {
     const day = await db.businessDays.get(dayId)
     if (!day || day.closedAt) throw new Error('No open day to close')
-    const terminals = await db.terminals.where('branchId').equals(day.branchId).toArray()
-    for (const t of terminals) {
-      if (await getOpenShift(t.id)) throw new Error(`Close the open shift on ${t.name} first`)
-    }
-    // ponytail: only checks shifts. The full checklist (tabs, held carts, pending GCash) lands in 2E.
     await db.businessDays.update(dayId, { closedAt: new Date().toISOString(), closedBy: userId })
     await audit({ userId, action: 'day.close', ref: dayId })
   })

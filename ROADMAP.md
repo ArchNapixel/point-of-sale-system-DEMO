@@ -94,9 +94,9 @@ Because there is no seed data, you need screens to enter it.
 - [x] Time windows, min-spend recheck, B1T1, single-use codes, employee discount
 
 ### 2E — Day close and reports
-- [ ] Day-close checklist (blocks on open tabs, held carts, pending GCash, open shifts)
-- [ ] X / Z reports
-- [ ] Owner dashboard: net sales, over/short, voids/refunds/comps/no-sales, senior/PWD log, payment breakdown
+- [x] Day-close checklist (blocks on open tabs, held carts, pending GCash, open shifts)
+- [x] X / Z reports
+- [x] Owner dashboard: net sales, over/short, voids/refunds/comps/no-sales, senior/PWD log, payment breakdown
 
 ### 2F — Staff extras
 - [ ] Fast user switch, auto-lock, PIN reset by owner

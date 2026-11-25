@@ -6,6 +6,7 @@ import type { ApprovalAction } from '../lib/approval'
 import type { PayMethod } from '../lib/payments'
 import type { AppliedEmployee, AppliedPromo, OrderDiscount } from '../lib/discount'
 import type { Promo } from '../lib/promos'
+import type { Report } from '../lib/reports'
 
 // Every row has a device-made UUID id. Archive via `active: false`, never delete (rule 3).
 export type Branch = { id: string; name: string; active: boolean }
@@ -176,6 +177,8 @@ export type Remake = {
 }
 // Where a promo was used: a log per use, so a voucher code shows who got it, when and on which order.
 export type PromoUse = { id: string; promoId: string; promoName: string; code?: string; orderId: string; terminalId: string; businessDate: string; at: string; amount: number }
+// The end-of-day (Z) report, frozen when the day closed. Later changes never rewrite it.
+export type ZReport = { id: string; businessDayId: string; branchId: string; date: string; at: string; by: string; report: Report }
 export type InvoicePrint = { id: string; orderId: string; userId: string; at: string; kind: 'original' | 'reprint'; approvedBy?: string }
 export type Payment = {
   id: string
@@ -277,6 +280,7 @@ export const db = new Dexie('demo-pos') as Dexie & {
   approvals: EntityTable<Approval, 'id'>
   refunds: EntityTable<Refund, 'id'>
   promos: EntityTable<Promo, 'id'>
+  zReports: EntityTable<ZReport, 'id'>
   promoUses: EntityTable<PromoUse, 'id'>
   cashMovements: EntityTable<CashMovement, 'id'>
   remakes: EntityTable<Remake, 'id'>
@@ -345,4 +349,7 @@ db.version(14).stores({
 db.version(15).stores({
   promos: 'id, code, active',
   promoUses: 'id, promoId, orderId, businessDate',
+})
+db.version(16).stores({
+  zReports: 'id, &businessDayId, date',
 })

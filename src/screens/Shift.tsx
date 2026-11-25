@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useAuth } from '../auth'
 import { db, type Denoms, type Shift as ShiftRow } from '../db/db'
 import {
-  DENOMS, closeBusinessDay, closeShift, countTotal, expectedFloat, getCloseSummary, getOpenDay, getOpenShift, lateCloseShift, openBusinessDay,
+  DENOMS, closeShift, countTotal, expectedFloat, getCloseSummary, getOpenDay, getOpenShift, lateCloseShift, openBusinessDay,
   openShift, submitCloseCount,
 } from '../db/shifts'
 import { DEVICE_KEY, resolveTerminal } from '../db/device'
@@ -11,6 +11,10 @@ import { can } from '../lib/roles'
 import { formatPeso } from '../lib/money'
 import { Err, useAction } from '../ui'
 import CashMovements from './CashMovements'
+import { closeDayAndReport } from '../db/reports'
+import { discardHeld } from '../db/carts'
+import { verifyPayment } from '../db/orders'
+import { dayCloseChecklist } from '../db/shifts'
 
 
 const when = (iso: string) => new Date(iso).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })
@@ -57,7 +61,7 @@ function Day({ branchId }: { branchId: string }) {
       {day.d ? (
         <>
           <p>Open for <strong>{day.d.date}</strong>, started {when(day.d.openedAt)}.</p>
-          {canOpen && <button onClick={() => run(() => closeBusinessDay(day.d!.id, user.id))}>Close business day</button>}
+          {canOpen && <DayChecklist dayId={day.d.id} userId={user.id} />}
         </>
       ) : (
         <>
@@ -67,6 +71,45 @@ function Day({ branchId }: { branchId: string }) {
       )}
       <Err msg={error} />
     </section>
+  )
+}
+
+/** Nothing can be left loose when the day closes: open shifts, held carts and unverified GCash/Maya must be cleared first. */
+function DayChecklist({ dayId, userId }: { dayId: string; userId: string }) {
+  const list = useLiveQuery(async () => {
+    const l = await dayCloseChecklist(dayId)
+    const terminals = new Map((await db.terminals.toArray()).map((t) => [t.id, t.name]))
+    const users = new Map((await db.users.toArray()).map((u) => [u.id, u.name]))
+    return { ...l, terminals, users }
+  }, [dayId])
+  const [reasons, setReasons] = useState<Record<string, string>>({})
+  const { error, run } = useAction()
+  if (!list) return null
+  return (
+    <div>
+      <h4>Before closing</h4>
+      <ul className="lines">
+        <li>{list.openShifts.length === 0 ? '✓ No open shifts' : `✗ ${list.openShifts.length} open shift(s)`}</li>
+        {list.openShifts.map((s) => (
+          <li key={s.id} className="row">
+            {list.terminals.get(s.terminalId)} · {list.users.get(s.cashierId)}: the cashier closes it with a count, or:
+            <input aria-label="Late close reason" placeholder="Why close it late?" value={reasons[s.id] ?? ''} onChange={(e) => setReasons({ ...reasons, [s.id]: e.target.value })} />
+            <button disabled={!(reasons[s.id] ?? '').trim()} onClick={() => run(() => lateCloseShift(s.id, userId, reasons[s.id]))}>Late close</button>
+          </li>
+        ))}
+        <li>{list.heldCarts.length === 0 ? '✓ No held carts' : `✗ ${list.heldCarts.length} held cart(s)`}</li>
+        {list.heldCarts.map((h) => (
+          <li key={h.id} className="row">{h.label} <button onClick={() => run(() => discardHeld(h.id))}>Discard</button></li>
+        ))}
+        <li>{list.pendingPayments.length === 0 ? '✓ No pending GCash/Maya' : `✗ ${list.pendingPayments.length} GCash/Maya payment(s) to verify`}</li>
+        {list.pendingPayments.map((p) => (
+          <li key={p.id} className="row">{formatPeso(p.amount)} ref {p.reference} <button onClick={() => run(() => verifyPayment(p.id, userId))}>Verify</button></li>
+        ))}
+      </ul>
+      <Err msg={error} />
+      <button className="primary" disabled={!list.ok} onClick={() => run(() => closeDayAndReport(dayId, userId))}>Close business day</button>
+      {!list.ok && <small> Clear the items above first.</small>}
+    </div>
   )
 }
 
