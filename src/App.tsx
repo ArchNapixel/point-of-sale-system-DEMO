@@ -7,8 +7,9 @@ import { can } from './lib/roles'
 import { DEMO_FOOTER } from './lib/receipt'
 
 import Shift from './screens/Shift'
+import Menu from './screens/Menu'
 
-type Tab = 'shift' | 'setup' | 'settings'
+type Tab = 'shift' | 'menu' | 'setup' | 'settings'
 
 export default function App() {
   const { user, ready, logout } = useAuth()
@@ -19,6 +20,7 @@ export default function App() {
   // Screens a role can't use are not shown at all. Add new screens here as they ship.
   const tabs: { id: Tab; label: string }[] = []
   if (can(user.role, 'openShift') || can(user.role, 'openDay')) tabs.push({ id: 'shift', label: 'Shift' })
+  if (can(user.role, 'editPrices') || can(user.role, 'markSoldOut')) tabs.push({ id: 'menu', label: 'Menu' })
   if (can(user.role, 'manageSetup')) tabs.push({ id: 'setup', label: 'Setup' }, { id: 'settings', label: 'Settings' })
   const current = tabs.some((t) => t.id === tab) ? tab : tabs[0]?.id
 
@@ -40,6 +42,7 @@ export default function App() {
       <main>
         {!current && <p>Nothing here for your role yet.</p>}
         {current === 'shift' && <Shift />}
+        {current === 'menu' && <Menu />}
         {current === 'setup' && <Setup />}
         {current === 'settings' && <Settings />}
       </main>

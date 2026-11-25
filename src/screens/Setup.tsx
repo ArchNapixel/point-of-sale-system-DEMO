@@ -4,24 +4,7 @@ import { db, type User } from '../db/db'
 import { createBranch, createTerminal, createUser, setActive, updateUser } from '../db/setup'
 import { ROLES, type Role } from '../lib/roles'
 import { isValidPin } from '../lib/pin'
-
-/** Runs an action and shows its error message (validation errors come from db/setup). */
-function useAction() {
-  const [error, setError] = useState('')
-  const run = async (fn: () => Promise<unknown>) => {
-    try {
-      await fn()
-      setError('')
-      return true
-    } catch (e) {
-      setError((e as Error).message)
-      return false
-    }
-  }
-  return { error, run }
-}
-
-const Err = ({ msg }: { msg: string }) => (msg ? <p role="alert">{msg}</p> : null)
+import { Err, useAction } from '../ui'
 
 function ArchiveButton({ table, id, active }: { table: 'branches' | 'terminals' | 'users'; id: string; active: boolean }) {
   const { error, run } = useAction()

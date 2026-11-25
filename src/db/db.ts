@@ -16,6 +16,11 @@ export type AuditEntry = {
   ref?: string
   detail?: Record<string, unknown>
 }
+export type Category = { id: string; name: string; sort: number; active: boolean }
+// ponytail: sold-out is one flag per item. Per-branch / per-channel sold-out comes with delivery channels (4B).
+export type Item = { id: string; categoryId: string; name: string; soldOut: boolean; active: boolean }
+// A variant is one sellable size/temperature of an item and carries the base price in centavos.
+export type Variant = { id: string; itemId: string; size?: string; temp?: 'hot' | 'iced'; price: number; active: boolean }
 export type Denoms = Record<string, number> // denomination key -> piece count (see shifts.ts DENOMS)
 export type BusinessDay = {
   id: string
@@ -64,6 +69,9 @@ export const db = new Dexie('demo-pos') as Dexie & {
   businessDays: EntityTable<BusinessDay, 'id'>
   shifts: EntityTable<Shift, 'id'>
   cashCounts: EntityTable<CashCount, 'id'>
+  categories: EntityTable<Category, 'id'>
+  items: EntityTable<Item, 'id'>
+  variants: EntityTable<Variant, 'id'>
 }
 
 db.version(1).stores({
@@ -78,4 +86,9 @@ db.version(2).stores({
   businessDays: 'id, branchId, date',
   shifts: 'id, terminalId, businessDayId',
   cashCounts: 'id, shiftId',
+})
+db.version(3).stores({
+  categories: 'id',
+  items: 'id, categoryId',
+  variants: 'id, itemId',
 })

@@ -7,24 +7,10 @@ import {
 } from '../db/shifts'
 import { can } from '../lib/roles'
 import { formatPeso } from '../lib/money'
+import { Err, useAction } from '../ui'
 
 const DEVICE_KEY = 'pos-terminal' // which terminal this browser/tablet is
 
-function useAction() {
-  const [error, setError] = useState('')
-  const run = async (fn: () => Promise<unknown>) => {
-    try {
-      await fn()
-      setError('')
-      return true
-    } catch (e) {
-      setError((e as Error).message)
-      return false
-    }
-  }
-  return { error, run }
-}
-const Err = ({ msg }: { msg: string }) => (msg ? <p role="alert">{msg}</p> : null)
 const when = (iso: string) => new Date(iso).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })
 
 export default function Shift() {

@@ -27,9 +27,9 @@ Because there is no seed data, you need screens to enter it.
 - [x] Nobody can sell without an open day and shift (`getSellContext`, used by the order screen in 1E)
 
 ### 1C — Menu: categories, items, variants
-- [ ] Categories and items, archive instead of delete
-- [ ] Variants (size, hot/iced) that set the price
-- [ ] Sold-out toggle
+- [x] Categories and items, archive instead of delete
+- [x] Variants (size, hot/iced) that set the price
+- [x] Sold-out toggle
 
 ### 1D — Menu: modifiers
 - [ ] Modifier groups (required, min/max pick)
