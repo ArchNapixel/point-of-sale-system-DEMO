@@ -54,7 +54,36 @@ export type HeldCart = {
   cart: Cart
   status: 'held' | 'resumed' | 'discarded'
 }
-export type Counter = { id: string; last: number }
+// A paid order. Unpaid orders are still carts (held or on screen); an Order row exists only once payments cover the total.
+export type Order = {
+  id: string
+  branchId: string
+  terminalId: string
+  shiftId: string
+  businessDayId: string
+  businessDate: string
+  number: number // order number called out to the customer, per business day
+  orderType: Cart['orderType']
+  name: string
+  table: string
+  lines: Cart['lines'] // copied snapshot (rule 2)
+  total: number // centavos
+  status: 'paid'
+  paidAt: string
+  cashierId: string
+}
+export type Payment = {
+  id: string
+  orderId: string
+  method: 'cash'
+  amount: number // centavos applied to the order
+  tendered: number // cash handed over; change = tendered - amount
+  idempotencyKey: string // unique: a double tap or retry returns the first payment (rule 5)
+  at: string
+  businessDate: string
+  cashierId: string
+}
+export type Counter ={ id: string; last: number }
 export type Denoms = Record<string, number> // denomination key -> piece count (see shifts.ts DENOMS)
 export type BusinessDay = {
   id: string
@@ -110,6 +139,8 @@ export const db = new Dexie('demo-pos') as Dexie & {
   modifiers: EntityTable<Modifier, 'id'>
   heldCarts: EntityTable<HeldCart, 'id'>
   counters: EntityTable<Counter, 'id'>
+  orders: EntityTable<Order, 'id'>
+  payments: EntityTable<Payment, 'id'>
 }
 
 db.version(1).stores({
@@ -137,4 +168,8 @@ db.version(4).stores({
 db.version(5).stores({
   heldCarts: 'id, terminalId, shiftId, status',
   counters: 'id',
+})
+db.version(6).stores({
+  orders: 'id, businessDayId, businessDate, paidAt',
+  payments: 'id, orderId, &idempotencyKey, businessDate',
 })

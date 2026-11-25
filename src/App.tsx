@@ -9,8 +9,9 @@ import { DEMO_FOOTER } from './lib/receipt'
 import Shift from './screens/Shift'
 import Menu from './screens/Menu'
 import Order from './screens/Order'
+import Orders from './screens/Orders'
 
-type Tab = 'shift' | 'order' | 'menu' | 'setup' | 'settings'
+type Tab = 'shift' | 'order' | 'orders' | 'menu' | 'setup' | 'settings'
 
 export default function App() {
   const { user, ready, logout } = useAuth()
@@ -22,6 +23,7 @@ export default function App() {
   const tabs: { id: Tab; label: string }[] = []
   if (can(user.role, 'openShift') || can(user.role, 'openDay')) tabs.push({ id: 'shift', label: 'Shift' })
   if (can(user.role, 'sell')) tabs.push({ id: 'order', label: 'Order' })
+  if (can(user.role, 'sell')) tabs.push({ id: 'orders', label: 'Orders' })
   if (can(user.role, 'editPrices') || can(user.role, 'markSoldOut')) tabs.push({ id: 'menu', label: 'Menu' })
   if (can(user.role, 'manageSetup')) tabs.push({ id: 'setup', label: 'Setup' }, { id: 'settings', label: 'Settings' })
   const current = tabs.some((t) => t.id === tab) ? tab : tabs[0]?.id
@@ -45,6 +47,7 @@ export default function App() {
         {!current && <p>Nothing here for your role yet.</p>}
         {current === 'shift' && <Shift />}
         {current === 'order' && <Order />}
+        {current === 'orders' && <Orders />}
         {current === 'menu' && <Menu />}
         {current === 'setup' && <Setup />}
         {current === 'settings' && <Settings />}

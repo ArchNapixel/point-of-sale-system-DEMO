@@ -43,9 +43,9 @@ Because there is no seed data, you need screens to enter it.
 - [x] Prices copied onto each order line
 
 ### 1F — Cash payment (first complete sale)
-- [ ] Cash tendered, change shown large, quick buttons (exact, ₱100, ₱500, ₱1,000)
-- [ ] Save a paid order and show it on a simple order list
-- [ ] Order stays unpaid until payment lines add up to the total
+- [x] Cash tendered, change shown large, quick buttons (exact, ₱100, ₱500, ₱1,000)
+- [x] Save a paid order and show it on a simple order list (Orders tab)
+- [x] Order stays unpaid until payment lines add up to the total (a cart is saved as an order only once paid)
 
 ### 1G — Other payments
 - [ ] GCash/Maya: reference number, Pending verification, duplicate reference rejected

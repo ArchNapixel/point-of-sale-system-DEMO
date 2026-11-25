@@ -6,6 +6,8 @@ import { getSellContext } from '../db/shifts'
 import { getSellableMenu } from '../db/menu'
 import { discardHeld, holdCart, listHeld, resumeHeld } from '../db/carts'
 import { DEVICE_KEY, resolveTerminal } from '../db/device'
+import { payCash } from '../db/orders'
+import { parsePesos, pesos } from '../lib/money'
 import {
   ORDER_TYPES, addLine, buildLine, cartCount, cartTotal, changeQty, duplicateLine, emptyCart, lineTotal, removeLine, replaceLine,
   type Cart, type CartLine, type OrderType,
@@ -46,11 +48,48 @@ export default function Order() {
   return <OrderScreen terminalId={terminal.id} shiftId={ctx.shift.id} user={user} />
 }
 
+/** Cash tendered + change. The key is made once per open panel, so a double tap can't save two payments. */
+function CashPanel({ total, onPay, onCancel }: { total: number; onPay: (tendered: number, key: string) => Promise<unknown>; onCancel: () => void }) {
+  const [text, setText] = useState('')
+  const [key] = useState(newId)
+  const [busy, setBusy] = useState(false)
+  const { error, run } = useAction()
+  const tendered = parsePesos(text)
+  const change = tendered === null ? null : tendered - total
+  const set = (c: number) => setText(String(c / 100))
+  return (
+    <div className="card">
+      <div className="row between"><span>Total</span><strong>{formatPeso(total)}</strong></div>
+      <div className="row">
+        <button onClick={() => set(total)}>Exact</button>
+        {[100, 500, 1000].map((p) => <button key={p} onClick={() => set(pesos(p))}>{formatPeso(pesos(p)).replace('.00', '')}</button>)}
+      </div>
+      <input aria-label="Cash tendered" inputMode="decimal" placeholder="Cash tendered" value={text} onChange={(e) => setText(e.target.value)} autoFocus />
+      <p className="change" style={{ fontSize: '2rem' }}>
+        {change === null ? 'Change —' : change < 0 ? `Short ${formatPeso(-change)}` : `Change ${formatPeso(change)}`}
+      </p>
+      <Err msg={error} />
+      <div className="row">
+        <button onClick={onCancel}>Back</button>
+        <button
+          className="primary"
+          disabled={busy || change === null || change < 0}
+          onClick={async () => { setBusy(true); await run(() => onPay(tendered!, key)); setBusy(false) }}
+        >
+          Confirm payment
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftId: string; user: User }) {
   const [cart, setCart] = useState<Cart>(() => loadCart(terminalId))
   const [history, setHistory] = useState<Cart[]>([]) // carts before each change to the lines, for Undo
   const [picking, setPicking] = useState<{ item: MenuItem; initial?: CartLine } | null>(null)
   const [catId, setCatId] = useState('')
+  const [paying, setPaying] = useState(false)
+  const [done, setDone] = useState<{ number: number; change: number } | null>(null)
   const menu = useLiveQuery(getSellableMenu, [])
   const held = useLiveQuery(() => listHeld(terminalId), [terminalId])
   const { error, run } = useAction()
@@ -181,9 +220,29 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
           <button onClick={undo} disabled={history.length === 0}>Undo</button>
           <button onClick={() => commit({ ...cart, lines: [] })} disabled={cart.lines.length === 0}>Clear</button>
           <button onClick={hold} disabled={cart.lines.length === 0}>Hold</button>
-          <button className="primary" disabled title="Payment is built in the next part">Take payment</button>
+          <button className="primary" onClick={() => setPaying(true)} disabled={cart.lines.length === 0}>Take payment</button>
         </div>
         <Err msg={error} />
+        {paying && (
+          <CashPanel
+            total={cartTotal(cart)}
+            onCancel={() => setPaying(false)}
+            onPay={async (tendered, key) => {
+              const { order, payment } = await payCash(terminalId, user.id, cart, tendered, key)
+              setCart(emptyCart())
+              setHistory([])
+              setPaying(false)
+              setDone({ number: order.number, change: payment.tendered - payment.amount })
+            }}
+          />
+        )}
+        {done && (
+          <div className="card" role="status">
+            <p>Order #{done.number} paid</p>
+            <p className="change">Change {formatPeso(done.change)}</p>
+            <button onClick={() => setDone(null)}>Next order</button>
+          </div>
+        )}
 
         {held.length > 0 && (
           <div>

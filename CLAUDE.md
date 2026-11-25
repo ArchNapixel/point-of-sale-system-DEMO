@@ -45,3 +45,4 @@ Web-based, offline-first PWA (a website opened in Chrome; no install needed).
 - Prefer the simplest implementation that satisfies a roadmap item; no speculative abstractions.
 - Each money/tax/stock computation gets at least one runnable test (e.g. senior latte = ₱120, duplicate GCash ref rejected, drawer over/short).
 - Do not `git push`; the user pushes. Commit locally only when asked.
+- When a task is finished, always end the reply with a suggested commit message (e.g. `Add cash payment and order list (1F)`), matching the style of recent commits. Suggest only; don't commit unless asked.
