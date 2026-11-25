@@ -7,6 +7,7 @@ import type { PayMethod } from '../lib/payments'
 import type { AppliedEmployee, AppliedPromo, OrderDiscount } from '../lib/discount'
 import type { Promo } from '../lib/promos'
 import type { Report } from '../lib/reports'
+import type { BaseUnit, IngredientUnit } from '../lib/units'
 
 // Every row has a device-made UUID id. Archive via `active: false`, never delete (rule 3).
 export type Branch = { id: string; name: string; active: boolean }
@@ -189,6 +190,8 @@ export type TimeEntry = {
   businessDate: string
   edits?: { at: string; by: string; reason: string; was: { inAt: string; outAt?: string } }[]
 }
+// What the café buys and uses up. Counted in one base unit; other units (kg, pump, case) convert to it. Archive, never delete (rule 3).
+export type Ingredient = { id: string; name: string; baseUnit: BaseUnit; units: IngredientUnit[]; active: boolean }
 export type InvoicePrint = { id: string; orderId: string; userId: string; at: string; kind: 'original' | 'reprint'; approvedBy?: string }
 export type Payment = {
   id: string
@@ -292,6 +295,7 @@ export const db = new Dexie('demo-pos') as Dexie & {
   promos: EntityTable<Promo, 'id'>
   zReports: EntityTable<ZReport, 'id'>
   timeEntries: EntityTable<TimeEntry, 'id'>
+  ingredients: EntityTable<Ingredient, 'id'>
   promoUses: EntityTable<PromoUse, 'id'>
   cashMovements: EntityTable<CashMovement, 'id'>
   remakes: EntityTable<Remake, 'id'>
@@ -366,4 +370,7 @@ db.version(16).stores({
 })
 db.version(17).stores({
   timeEntries: 'id, userId, businessDate',
+})
+db.version(18).stores({
+  ingredients: 'id, name, active',
 })

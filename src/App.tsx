@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { getSetting } from './db/settings'
 import LockScreen from './LockScreen'
 import Clock from './screens/Clock'
+import Ingredients from './screens/Ingredients'
 import { useAuth } from './auth'
 import Login from './Login'
 import Settings from './screens/Settings'
@@ -18,7 +19,7 @@ import Queue from './screens/Queue'
 import Promos from './screens/Promos'
 import Reports from './screens/Reports'
 
-type Tab = 'shift' | 'order' | 'orders' | 'queue' | 'promos' | 'reports' | 'clock' | 'menu' | 'setup' | 'settings'
+type Tab = 'shift' | 'order' | 'orders' | 'queue' | 'promos' | 'reports' | 'clock' | 'inventory' | 'menu' | 'setup' | 'settings'
 
 export default function App() {
   const { user, ready, locked, lock, logout } = useAuth()
@@ -46,6 +47,7 @@ export default function App() {
   if (can(user.role, 'sell')) tabs.push({ id: 'orders', label: 'Orders' })
   if (can(user.role, 'viewQueue')) tabs.push({ id: 'queue', label: 'Queue' })
   if (can(user.role, 'editPrices') || can(user.role, 'markSoldOut')) tabs.push({ id: 'menu', label: 'Menu' })
+  if (can(user.role, 'editStock')) tabs.push({ id: 'inventory', label: 'Inventory' })
   tabs.push({ id: 'clock', label: 'Clock' })
   if (can(user.role, 'viewReports')) tabs.push({ id: 'reports', label: 'Reports' })
   if (can(user.role, 'editPrices')) tabs.push({ id: 'promos', label: 'Promos' })
@@ -76,6 +78,7 @@ export default function App() {
         {current === 'promos' && <Promos />}
         {current === 'reports' && <Reports />}
         {current === 'clock' && <Clock />}
+        {current === 'inventory' && <Ingredients />}
         {current === 'menu' && <Menu />}
         {current === 'setup' && <Setup />}
         {current === 'settings' && <Settings />}

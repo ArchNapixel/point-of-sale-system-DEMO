@@ -107,7 +107,7 @@ Because there is no seed data, you need screens to enter it.
 ## Phase 3 — Inventory
 
 ### 3A — Ingredients and units
-- [ ] Ingredients, base units, conversions (pump→ml, kg→g)
+- [x] Ingredients, base units, conversions (pump→ml, kg→g)
 
 ### 3B — Recipes
 - [ ] Recipes per variant; modifier deltas (add/remove/replace); takeout-only packaging
