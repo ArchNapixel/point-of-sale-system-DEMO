@@ -87,8 +87,8 @@ Because there is no seed data, you need screens to enter it.
 - [x] Fixed reason codes plus "Other" with a note
 
 ### 2C — Cash movements
-- [ ] Cash drops, paid-outs, paid-ins, no-sale opens (reason, logged)
-- [ ] Expected drawer cash includes them
+- [x] Cash drops, paid-outs, paid-ins, no-sale opens (reason, logged)
+- [x] Expected drawer cash includes them
 
 ### 2D — Promos
 - [ ] Time windows, min-spend recheck, B1T1, single-use codes, employee discount

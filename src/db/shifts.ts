@@ -3,7 +3,7 @@ import { newId } from '../lib/id'
 import { audit } from './audit'
 import { businessDate } from './businessDate'
 import { getSetting } from './settings'
-import { overShortStatus } from '../lib/cash'
+import { cashEffect, overShortStatus } from '../lib/cash'
 
 // Philippine bills and coins. Keys keep the ₱20 bill and ₱20 coin apart. Values are centavos.
 export const DENOMS = [
@@ -140,8 +140,8 @@ export async function lateCloseShift(shiftId: string, supervisorId: string, reas
 
 /**
  * Cash that should be in the drawer: the opening count plus cash taken for sales (the part applied to orders, not the change given back),
- * minus cash handed back in refunds and voids during this shift (a refund for an old sale comes out of today's drawer).
- * ponytail: paid-ins, paid-outs and cash drops are not built yet (2C); add them to this sum when they land.
+ * minus cash handed back in refunds and voids during this shift (a refund for an old sale comes out of today's drawer),
+ * plus paid-ins, minus paid-outs and drops to the safe.
  */
 export async function expectedCash(shiftId: string): Promise<number> {
   const shift = await db.shifts.get(shiftId)
@@ -149,7 +149,8 @@ export async function expectedCash(shiftId: string): Promise<number> {
   const orderIds = (await db.orders.where('shiftId').equals(shiftId).toArray()).map((o) => o.id)
   const cash = (await db.payments.where('orderId').anyOf(orderIds).toArray()).filter((p) => p.method === 'cash')
   const refunded = (await db.refunds.where('shiftId').equals(shiftId).toArray()).reduce((s, r) => s + r.cashAmount, 0)
-  return shift.openingTotal + cash.reduce((s, p) => s + p.amount, 0) - refunded
+  const moved = (await db.cashMovements.where('shiftId').equals(shiftId).toArray()).reduce((s, m) => s + cashEffect(m.kind, m.amount), 0)
+  return shift.openingTotal + cash.reduce((s, p) => s + p.amount, 0) - refunded + moved
 }
 
 /**

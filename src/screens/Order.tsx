@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useAuth } from '../auth'
 import { db, type User } from '../db/db'
-import { getSellContext } from '../db/shifts'
+import { expectedCash, getSellContext } from '../db/shifts'
 import { getSellableMenu } from '../db/menu'
 import { discardHeld, holdCart, listHeld, resumeHeld } from '../db/carts'
 import { DEVICE_KEY, resolveTerminal } from '../db/device'
@@ -196,6 +196,7 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
   const [comping, setComping] = useState('') // line id being comped
   const [reason, setReason] = useState<Reason>(NO_REASON)
   const limits = useLiveQuery(getLimits, [])
+  const drawer = useLiveQuery(async () => ({ cash: await expectedCash(shiftId), limit: await getSetting('cashDropLimitCentavos') }), [shiftId, cart.lines.length])
   const [showInvoice, setShowInvoice] = useState(false)
   const [discounting, setDiscounting] = useState(false)
   const vat = useLiveQuery(() => getSetting('vatRegistered'), [])
@@ -296,6 +297,9 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
       </section>
 
       <aside className="cart card">
+        {drawer && drawer.cash > drawer.limit && (
+          <p role="status"><strong>The drawer is over {formatPeso(drawer.limit)}.</strong> Ask a supervisor for a cash drop (Shift tab).</p>
+        )}
         <div className="seg">
           {ORDER_TYPES.map((t) => (
             <button key={t.id} aria-pressed={cart.orderType === t.id} onClick={() => setType(t.id)}>{t.label}</button>

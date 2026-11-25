@@ -10,6 +10,7 @@ import { DEVICE_KEY, resolveTerminal } from '../db/device'
 import { can } from '../lib/roles'
 import { formatPeso } from '../lib/money'
 import { Err, useAction } from '../ui'
+import CashMovements from './CashMovements'
 
 
 const when = (iso: string) => new Date(iso).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })
@@ -95,6 +96,7 @@ function OpenShift({ shift, terminalId }: { shift: ShiftRow; terminalId: string 
         {mine ? 'You' : cashier?.name ?? '…'} opened it {when(shift.openedAt)} with {formatPeso(shift.openingTotal)}.
         {shift.floatGap !== 0 && <> <strong>Float gap: {formatPeso(shift.floatGap)}</strong> against {formatPeso(shift.expectedFloat)}.</>}
       </p>
+      {mine && user && <CashMovements shiftId={shift.id} userId={user.id} />}
       {mine && <CloseShift shiftId={shift.id} />}
       {user && can(user.role, 'openDay') && (
         <form

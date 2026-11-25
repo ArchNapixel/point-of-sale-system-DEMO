@@ -219,6 +219,21 @@ export type Shift = {
   overShort?: number // closeCounted - expectedCash; reported per shift, never netted against other shifts
   overShortNote?: string // required when past the tolerance
 }
+// Cash that moved without a sale: a drop to the safe, a paid-out, a paid-in, or the drawer opened with no sale.
+export type CashMovement = {
+  id: string
+  shiftId: string
+  terminalId: string
+  kind: 'drop' | 'paid-out' | 'paid-in' | 'no-sale'
+  amount: number // centavos; 0 for a no-sale open
+  reason: string
+  receiptRef?: string // receipt number or note for a paid-out (a photo can come later)
+  userId: string // the cashier who owns the drawer
+  approvedBy: string
+  businessDate: string
+  at: string
+  idempotencyKey: string
+}
 export type CashCount = {
   id: string
   shiftId: string
@@ -256,6 +271,7 @@ export const db = new Dexie('demo-pos') as Dexie & {
   invoicePrints: EntityTable<InvoicePrint, 'id'>
   approvals: EntityTable<Approval, 'id'>
   refunds: EntityTable<Refund, 'id'>
+  cashMovements: EntityTable<CashMovement, 'id'>
   remakes: EntityTable<Remake, 'id'>
   queueItems: EntityTable<QueueItem, 'id'>
   queueEvents: EntityTable<QueueEvent, 'id'>
@@ -315,4 +331,7 @@ db.version(13).stores({
   refunds: 'id, orderId, businessDate, shiftId, &idempotencyKey',
   remakes: 'id, itemId, orderId, businessDate',
   orders: 'id, businessDayId, businessDate, paidAt, invoiceNo, shiftId, &idempotencyKey',
+})
+db.version(14).stores({
+  cashMovements: 'id, shiftId, businessDate, &idempotencyKey',
 })
