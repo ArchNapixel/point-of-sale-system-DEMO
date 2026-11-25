@@ -110,7 +110,7 @@ Because there is no seed data, you need screens to enter it.
 - [x] Ingredients, base units, conversions (pump→ml, kg→g)
 
 ### 3B — Recipes
-- [ ] Recipes per variant; modifier deltas (add/remove/replace); takeout-only packaging
+- [x] Recipes per variant; modifier deltas (add/remove/replace); takeout-only packaging
 
 ### 3C — Stock ledger and waste
 - [ ] Ledger (sale, receive, waste, transfer, production, count adjustment); negative stock allowed + alert

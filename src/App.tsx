@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { getSetting } from './db/settings'
 import LockScreen from './LockScreen'
 import Clock from './screens/Clock'
-import Ingredients from './screens/Ingredients'
+import Inventory from './screens/Inventory'
 import { useAuth } from './auth'
 import Login from './Login'
 import Settings from './screens/Settings'
@@ -78,7 +78,7 @@ export default function App() {
         {current === 'promos' && <Promos />}
         {current === 'reports' && <Reports />}
         {current === 'clock' && <Clock />}
-        {current === 'inventory' && <Ingredients />}
+        {current === 'inventory' && <Inventory />}
         {current === 'menu' && <Menu />}
         {current === 'setup' && <Setup />}
         {current === 'settings' && <Settings />}

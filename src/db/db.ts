@@ -8,6 +8,7 @@ import type { AppliedEmployee, AppliedPromo, OrderDiscount } from '../lib/discou
 import type { Promo } from '../lib/promos'
 import type { Report } from '../lib/reports'
 import type { BaseUnit, IngredientUnit } from '../lib/units'
+import type { RecipeLine } from '../lib/recipes'
 
 // Every row has a device-made UUID id. Archive via `active: false`, never delete (rule 3).
 export type Branch = { id: string; name: string; active: boolean }
@@ -192,6 +193,8 @@ export type TimeEntry = {
 }
 // What the café buys and uses up. Counted in one base unit; other units (kg, pump, case) convert to it. Archive, never delete (rule 3).
 export type Ingredient = { id: string; name: string; baseUnit: BaseUnit; units: IngredientUnit[]; active: boolean }
+// One version of a recipe. Saving makes a new version; old ones stay so old sales keep what they used (rule 6).
+export type Recipe = { id: string; kind: 'variant' | 'modifier'; refId: string; version: number; lines: RecipeLine[]; at: string; by: string }
 export type InvoicePrint = { id: string; orderId: string; userId: string; at: string; kind: 'original' | 'reprint'; approvedBy?: string }
 export type Payment = {
   id: string
@@ -296,6 +299,7 @@ export const db = new Dexie('demo-pos') as Dexie & {
   zReports: EntityTable<ZReport, 'id'>
   timeEntries: EntityTable<TimeEntry, 'id'>
   ingredients: EntityTable<Ingredient, 'id'>
+  recipes: EntityTable<Recipe, 'id'>
   promoUses: EntityTable<PromoUse, 'id'>
   cashMovements: EntityTable<CashMovement, 'id'>
   remakes: EntityTable<Remake, 'id'>
@@ -373,4 +377,7 @@ db.version(17).stores({
 })
 db.version(18).stores({
   ingredients: 'id, name, active',
+})
+db.version(19).stores({
+  recipes: 'id, refId, [kind+refId]',
 })
