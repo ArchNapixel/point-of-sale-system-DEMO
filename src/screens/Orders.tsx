@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useAuth } from '../auth'
 import { db } from '../db/db'
@@ -5,34 +6,41 @@ import { verifyPayment } from '../db/orders'
 import { can } from '../lib/roles'
 import { PAY_METHODS } from '../lib/payments'
 import { formatPeso } from '../lib/money'
+import { matchesOrder } from '../lib/invoice'
 import { Err, useAction } from '../ui'
+import Receipt from './Receipt'
 
-// ponytail: last 50 paid orders across this browser's database. Filter by day/terminal and add voids/refunds later (1H+).
+// ponytail: search scans every order in this browser's database in memory (fine for a café's volume; add an index if it gets slow).
+// Shows the last 50 matches. Voids/refunds come later (2x).
 export default function Orders() {
   const { user } = useAuth()
   const { error, run } = useAction()
+  const [q, setQ] = useState('')
+  const [viewing, setViewing] = useState('')
   const orders = useLiveQuery(async () => {
-    const list = await db.orders.orderBy('paidAt').reverse().limit(50).toArray()
+    const list = (await db.orders.orderBy('paidAt').reverse().toArray()).filter((o) => matchesOrder(o, q)).slice(0, 50)
     const pays = await db.payments.where('orderId').anyOf(list.map((o) => o.id)).toArray()
     return list.map((o) => ({ ...o, payments: pays.filter((p) => p.orderId === o.id) }))
-  }, [])
+  }, [q])
   const log = useLiveQuery(() => db.discountLog.orderBy('at').reverse().limit(50).toArray(), [])
   if (!orders || !user || !log) return null
   const label = (m: string) => PAY_METHODS.find((x) => x.id === m)?.label ?? m
   return (
     <section>
       <h2>Orders</h2>
+      <input aria-label="Search sales" placeholder="Search invoice no., order #, name, table, date" value={q} onChange={(e) => setQ(e.target.value)} />
       <Err msg={error} />
-      {orders.length === 0 && <p className="empty">No paid orders yet.</p>}
+      {viewing && <Receipt orderId={viewing} onClose={() => setViewing('')} />}
+      {orders.length === 0 && <p className="empty">{q ? 'No sales match.' : 'No paid orders yet.'}</p>}
       <ul className="lines">
         {orders.map((o) => (
           <li key={o.id}>
             <div className="row between">
               <span>
-                <strong>#{o.number}</strong> {o.name || (o.table && `Table ${o.table}`) || o.orderType}{' '}
+                <strong>#{o.number}</strong> <small>{o.invoiceNo}</small> {o.name || (o.table && `Table ${o.table}`) || o.orderType}{' '}
                 <small>{o.lines.reduce((s, l) => s + l.qty, 0)} items · {new Date(o.paidAt).toLocaleTimeString('en-PH', { timeStyle: 'short' })} · {o.lines.map((l) => `${l.qty}× ${l.name}`).join(', ')}</small>
               </span>
-              <strong>{formatPeso(o.total)}</strong>
+              <span className="row"><strong>{formatPeso(o.total)}</strong><button onClick={() => setViewing(o.id)}>Invoice</button></span>
             </div>
             {o.payments.map((p) => (
               <div key={p.id} className="row between">

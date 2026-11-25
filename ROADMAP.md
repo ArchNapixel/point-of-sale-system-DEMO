@@ -59,10 +59,10 @@ Because there is no seed data, you need screens to enter it.
 - [x] Discount log with repeat-ID flag
 
 ### 1I — Invoices
-- [ ] Unbroken per-terminal number series
-- [ ] VATable, VAT-exempt and discount lines; non-VAT variant
-- [ ] Printable receipt with the DEMO footer; buyer name/TIN
-- [ ] Reprint marked REPRINT and logged; search past sales
+- [x] Unbroken per-terminal number series
+- [x] VATable, VAT-exempt and discount lines; non-VAT variant
+- [x] Printable receipt with the DEMO footer; buyer name/TIN
+- [x] Reprint marked REPRINT and logged; search past sales
 
 ### 1J — Bar queue
 - [ ] Tickets split by station, per-item status

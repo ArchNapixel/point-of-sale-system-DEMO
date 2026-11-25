@@ -21,6 +21,7 @@ import { newId } from '../lib/id'
 import { variantLabel } from '../db/menu'
 import { Err, useAction } from '../ui'
 import ItemPicker from './ItemPicker'
+import Receipt from './Receipt'
 
 type MenuItem = Awaited<ReturnType<typeof getSellableMenu>>[number]['items'][number]
 
@@ -52,11 +53,12 @@ export default function Order() {
 }
 
 /** Takes one or more payment lines (split tender). The key is made once per open panel, so a double tap can't save two orders. */
-function PayPanel({ total, onPay, onCancel }: { total: number; onPay: (lines: PayLine[], key: string) => Promise<unknown>; onCancel: () => void }) {
+function PayPanel({ total, onPay, onCancel }: { total: number; onPay: (lines: PayLine[], key: string, buyer: { name: string; tin: string }) => Promise<unknown>; onCancel: () => void }) {
   const [lines, setLines] = useState<PayLine[]>([])
   const [method, setMethod] = useState<PayMethod>('cash')
   const [f, setF] = useState({ amount: '', ref: '', code: '', last4: '' })
   const [key] = useState(newId)
+  const [buyer, setBuyer] = useState({ name: '', tin: '' })
   const [busy, setBusy] = useState(false)
   const { error, run } = useAction()
   const balance = applyLines(total, lines).remaining
@@ -103,6 +105,11 @@ function PayPanel({ total, onPay, onCancel }: { total: number; onPay: (lines: Pa
         {!result ? '' : result.remaining > 0 ? `Still to pay ${formatPeso(result.remaining)}` : `Change ${formatPeso(result.change)}`}
       </p>
       {problem && <small>{problem}</small>}
+      <details>
+        <summary>Buyer name / TIN (business invoice)</summary>
+        <input aria-label="Buyer name" placeholder="Buyer name" value={buyer.name} onChange={(e) => setBuyer({ ...buyer, name: e.target.value })} />
+        <input aria-label="Buyer TIN" placeholder="Buyer TIN" value={buyer.tin} onChange={(e) => setBuyer({ ...buyer, tin: e.target.value })} />
+      </details>
       <Err msg={error} />
       <div className="row">
         <button onClick={onCancel}>Back</button>
@@ -115,7 +122,7 @@ function PayPanel({ total, onPay, onCancel }: { total: number; onPay: (lines: Pa
         <button
           className="primary"
           disabled={busy || !result || result.remaining > 0}
-          onClick={async () => { setBusy(true); await run(() => onPay(all, key)); setBusy(false) }}
+          onClick={async () => { setBusy(true); await run(() => onPay(all, key, buyer)); setBusy(false) }}
         >
           Confirm payment
         </button>
@@ -176,9 +183,10 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
   const [picking, setPicking] = useState<{ item: MenuItem; initial?: CartLine } | null>(null)
   const [catId, setCatId] = useState('')
   const [paying, setPaying] = useState(false)
+  const [showInvoice, setShowInvoice] = useState(false)
   const [discounting, setDiscounting] = useState(false)
   const vat = useLiveQuery(() => getSetting('vatRegistered'), [])
-  const [done, setDone] = useState<{ number: number; change: number; pending: boolean } | null>(null)
+  const [done, setDone] = useState<{ orderId: string; number: number; change: number; pending: boolean } | null>(null)
   const menu = useLiveQuery(getSellableMenu, [])
   const held = useLiveQuery(() => listHeld(terminalId), [terminalId])
   const { error, run } = useAction()
@@ -327,12 +335,12 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
           <PayPanel
             total={priced.total}
             onCancel={() => setPaying(false)}
-            onPay={async (lines, key) => {
-              const { order, payments, change } = await payOrder(terminalId, user.id, cart, lines, key)
+            onPay={async (lines, key, buyer) => {
+              const { order, payments, change } = await payOrder(terminalId, user.id, cart, lines, key, buyer)
               setCart(emptyCart())
               setHistory([])
               setPaying(false)
-              setDone({ number: order.number, change: change ?? 0, pending: payments.some((p) => p.status === 'pending') })
+              setDone({ orderId: order.id, number: order.number, change: change ?? 0, pending: payments.some((p) => p.status === 'pending') })
             }}
           />
         )}
@@ -341,7 +349,9 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
             <p>Order #{done.number} paid</p>
             <p className="change">Change {formatPeso(done.change)}</p>
             {done.pending && <p>E-wallet payment is pending. A supervisor verifies it in the Orders tab once it shows in the merchant app.</p>}
-            <button onClick={() => setDone(null)}>Next order</button>
+            <button onClick={() => setShowInvoice(true)}>Invoice</button>
+            <button onClick={() => { setDone(null); setShowInvoice(false) }}>Next order</button>
+            {showInvoice && <Receipt orderId={done.orderId} onClose={() => setShowInvoice(false)} />}
           </div>
         )}
 

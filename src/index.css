@@ -64,3 +64,14 @@ button.allergy[aria-pressed='true'] { background: #b00020; }
 .users { list-style: none; padding: 0; display: grid; gap: 0.5rem; }
 .users button { width: 100%; text-align: left; }
 .users small { opacity: 0.6; margin-left: 0.5rem; }
+
+.receipt { max-width: 22rem; font-family: ui-monospace, Consolas, monospace; font-size: 0.85rem; }
+.receipt .rrow { display: flex; justify-content: space-between; gap: 0.5rem; }
+.receipt .center { text-align: center; }
+.receipt .reprint { text-align: center; font-weight: 700; border: 2px solid; padding: 0.2rem; margin-bottom: 0.5rem; }
+.receipt hr { border: 0; border-top: 1px dashed currentColor; }
+@media print {
+  body * { visibility: hidden; }
+  .receipt, .receipt * { visibility: visible; }
+  .receipt { position: absolute; left: 0; top: 0; max-width: none; width: 72mm; }
+}

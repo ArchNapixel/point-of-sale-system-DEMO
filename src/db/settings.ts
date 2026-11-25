@@ -10,6 +10,9 @@ export const DEFAULT_SETTINGS = {
   smallWaiveCapCentavos: pesos(5),
   cashDropLimitCentavos: pesos(10000),
   platformCommissionPct: 20,
+  storeName: 'DEMO Café',
+  storeTin: '000-000-000-000',
+  storeAddress: 'Set the address in Settings',
 }
 
 export type SettingKey = keyof typeof DEFAULT_SETTINGS

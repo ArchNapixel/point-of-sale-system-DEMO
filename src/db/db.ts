@@ -64,7 +64,10 @@ export type Order = {
   shiftId: string
   businessDayId: string
   businessDate: string
+  invoiceNo: string // e.g. T1-000123, unbroken per terminal; voids keep their number
   number: number // order number called out to the customer, per business day
+  vatRegistered: boolean // the store setting at the time of sale; decides how the invoice is laid out
+  buyer?: { name: string; tin: string } // optional, for a business invoice
   orderType: Cart['orderType']
   name: string
   table: string
@@ -92,6 +95,7 @@ export type DiscountLogEntry = {
   reduction: number
   repeatId: boolean
 }
+export type InvoicePrint = { id: string; orderId: string; userId: string; at: string; kind: 'original' | 'reprint' }
 export type Payment = {
   id: string
   orderId: string
@@ -168,6 +172,7 @@ export const db = new Dexie('demo-pos') as Dexie & {
   orders: EntityTable<Order, 'id'>
   payments: EntityTable<Payment, 'id'>
   discountLog: EntityTable<DiscountLogEntry, 'id'>
+  invoicePrints: EntityTable<InvoicePrint, 'id'>
 }
 
 db.version(1).stores({
@@ -205,4 +210,8 @@ db.version(7).stores({
 })
 db.version(8).stores({
   discountLog: 'id, orderId, businessDate, idNumber',
+})
+db.version(9).stores({
+  orders: 'id, businessDayId, businessDate, paidAt, invoiceNo',
+  invoicePrints: 'id, orderId',
 })

@@ -1,4 +1,5 @@
 import { db, type DiscountLogEntry, type Order, type Payment } from './db'
+import { formatInvoiceNo } from '../lib/invoice'
 import { newId } from '../lib/id'
 import { cartCount, type Cart } from '../lib/cart'
 import { applyLines, normRef, type PayLine } from '../lib/payments'
@@ -14,11 +15,14 @@ import { getSellContext } from './shifts'
  * they never block the sale (rule 1). A GCash/Maya reference number can only be used once, ever.
  * Calling again with the same idempotency key returns the first result (line i uses `${key}:${i}`).
  */
-export async function payOrder(terminalId: string, userId: string, cart: Cart, lines: PayLine[], idempotencyKey: string) {
+export async function payOrder(
+  terminalId: string, userId: string, cart: Cart, lines: PayLine[], idempotencyKey: string, buyer?: { name: string; tin: string },
+) {
   const prior = await db.payments.where('idempotencyKey').equals(`${idempotencyKey}:0`).first()
   if (prior) return { order: (await db.orders.get(prior.orderId))!, payments: await db.payments.where('orderId').equals(prior.orderId).toArray() }
   if (cartCount(cart) === 0) throw new Error('The cart is empty')
-  const priced = priceCart(cart, await getSetting('vatRegistered'))
+  const vat = await getSetting('vatRegistered')
+  const priced = priceCart(cart, vat)
   if (cart.discount) {
     validateStatutory(cart.discount)
     if (!priced.discount) throw new Error('Tick the items that belong to the ID holder')
@@ -40,7 +44,10 @@ export async function payOrder(terminalId: string, userId: string, cart: Cart, l
     shiftId: ctx.shift.id,
     businessDayId: ctx.day.id,
     businessDate: ctx.day.date,
+    invoiceNo: '', // set inside the transaction below so a failed save never uses up a number
     number: await nextOrderNumber(ctx.day.id),
+    vatRegistered: vat,
+    ...(buyer && (buyer.name.trim() || buyer.tin.trim()) && { buyer: { name: buyer.name.trim(), tin: buyer.tin.trim() } }),
     orderType: cart.orderType,
     name: cart.name.trim(),
     table: cart.table.trim(),
@@ -67,7 +74,8 @@ export async function payOrder(terminalId: string, userId: string, cart: Cart, l
     businessDate: order.businessDate,
     cashierId: userId,
   }))
-  await db.transaction('rw', db.orders, db.payments, db.outbox, db.discountLog, async () => {
+  await db.transaction('rw', db.orders, db.payments, db.outbox, db.discountLog, db.counters, async () => {
+    order.invoiceNo = formatInvoiceNo(ctx.terminal.invoicePrefix, await nextInvoiceSeq(terminalId))
     await db.orders.add(order)
     const d = order.discount
     if (d) {
@@ -95,6 +103,25 @@ export async function payOrder(terminalId: string, userId: string, cart: Cart, l
     await audit({ userId, action: 'discount.statutory', ref: order.id, detail: { kind: d.kind, name: d.name, idNumber: d.idNumber, reduction: d.reduction } })
   }
   return { order, payments, change }
+}
+
+/** Per-terminal series: 1, 2, 3… Runs inside the sale's transaction, so numbers are never skipped or reused. */
+async function nextInvoiceSeq(terminalId: string) {
+  const id = `invoice:${terminalId}`
+  const n = ((await db.counters.get(id))?.last ?? 0) + 1
+  await db.counters.put({ id, last: n })
+  return n
+}
+
+/**
+ * Records that an invoice was printed. The first print is the original; every later one is a REPRINT and is audited.
+ * ponytail: no reprint reason or approver yet; supervisor PIN comes with 2A.
+ */
+export async function logPrint(orderId: string, userId: string): Promise<'original' | 'reprint'> {
+  const kind = (await db.invoicePrints.where('orderId').equals(orderId).count()) === 0 ? 'original' : 'reprint'
+  await db.invoicePrints.add({ id: newId(), orderId, userId, at: new Date().toISOString(), kind })
+  if (kind === 'reprint') await audit({ userId, action: 'invoice.reprint', ref: orderId })
+  return kind
 }
 
 /** A supervisor confirms an e-wallet payment showed up in the merchant app. Verifying your own sale is flagged. */

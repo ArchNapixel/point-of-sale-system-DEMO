@@ -2,13 +2,16 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { getSetting, setSetting, type SettingKey } from '../db/settings'
 
 // Money settings are stored in centavos but edited in pesos.
-const FIELDS: { key: SettingKey; label: string; kind: 'bool' | 'pesos' | 'int'; min?: number; max?: number }[] = [
+const FIELDS: { key: SettingKey; label: string; kind: 'bool' | 'pesos' | 'int' | 'text'; min?: number; max?: number }[] = [
   { key: 'vatRegistered', label: 'VAT-registered café (off = non-VAT)', kind: 'bool' },
   { key: 'dayCutoffHour', label: 'Business day starts at hour (0–23)', kind: 'int', min: 0, max: 23 },
   { key: 'floatCentavos', label: 'Starting float (₱)', kind: 'pesos' },
   { key: 'overShortToleranceCentavos', label: 'Over/short tolerance (₱)', kind: 'pesos' },
   { key: 'smallWaiveCapCentavos', label: 'Small waive cap (₱)', kind: 'pesos' },
   { key: 'cashDropLimitCentavos', label: 'Cash drop limit (₱)', kind: 'pesos' },
+  { key: 'storeName', label: 'Store name (on invoices)', kind: 'text' },
+  { key: 'storeTin', label: 'Store TIN', kind: 'text' },
+  { key: 'storeAddress', label: 'Store address', kind: 'text' },
   { key: 'platformCommissionPct', label: 'Delivery platform commission (%)', kind: 'int', min: 0, max: 100 },
 ]
 
@@ -18,7 +21,7 @@ const toForm = async (): Promise<Form> => {
   const f: Form = {}
   for (const { key, kind } of FIELDS) {
     const v = await getSetting(key)
-    f[key] = kind === 'bool' ? Boolean(v) : kind === 'pesos' ? String(Number(v) / 100) : String(v)
+    f[key] = kind === 'bool' ? Boolean(v) : kind === 'text' ? String(v) : kind === 'pesos' ? String(Number(v) / 100) : String(v)
   }
   return f
 }
@@ -38,6 +41,10 @@ export default function Settings() {
       const raw = form[key]
       if (kind === 'bool') {
         await setSetting(key, raw as boolean)
+        continue
+      }
+      if (kind === 'text') {
+        await setSetting(key, String(raw).trim())
         continue
       }
       const n = Number(raw)
@@ -65,7 +72,7 @@ export default function Settings() {
               />
             ) : (
               <input
-                inputMode="decimal"
+                inputMode={kind === 'text' ? undefined : 'decimal'}
                 value={form[key] as string}
                 onChange={(e) => { setForm({ ...form, [key]: e.target.value }); setMsg('') }}
               />
