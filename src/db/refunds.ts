@@ -43,6 +43,8 @@ async function record(kind: 'void' | 'refund', i: Common & { picks?: Record<stri
   const refund = await db.transaction('rw', [db.orders, db.refunds, db.queueItems, db.payments, db.approvals, db.users, db.settings, db.outbox, db.stockMoves], async () => {
     const order = await db.orders.get(i.orderId)
     if (!order || order.status !== 'paid') throw new Error('This order is already voided')
+    // ponytail: a bill paid from a tab was made when each round was sent, so it is refunded (as waste), never voided.
+    if (kind === 'void' && order.tabId) throw new Error('This was paid from a tab and the drinks were already made. Use Refund instead.')
     const rows = await refundableLines(i.orderId)
     const items = await db.queueItems.where('orderId').equals(i.orderId).toArray()
     const started = items.some((q) => q.status !== 'queued' && q.status !== 'void')

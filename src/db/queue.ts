@@ -11,7 +11,7 @@ import { FLOW, UNDO_MS, type QueueStatus } from '../lib/queue'
  * Turns a paid order's lines into bar/kitchen ticket rows. A line's station comes from its item's category;
  * "No prep" lines get no ticket and complete on their own. Call inside the sale's transaction (needs queueItems, queueEvents).
  */
-export async function createQueueItems(order: Order, userId: string) {
+export async function createQueueItems(order: Pick<Order, 'id' | 'number' | 'name' | 'table' | 'orderType' | 'lines' | 'paidAt'>, userId: string, tabId?: string) {
   const rows: QueueItem[] = []
   for (const l of order.lines) {
     const item = await db.items.get(l.itemId)
@@ -21,7 +21,7 @@ export async function createQueueItems(order: Order, userId: string) {
       id: newId(), orderId: order.id, orderNumber: order.number, orderLabel: order.name || (order.table && `Table ${order.table}`) || '',
       orderType: order.orderType, lineId: l.id, station, name: l.name, variantLabel: l.variantLabel,
       mods: l.mods.map((m) => `${m.name}${m.qty > 1 ? ` ×${m.qty}` : ''}`), notes: l.notes, allergy: l.allergy, qty: l.qty,
-      status: 'queued', statusAt: order.paidAt, rush: false, createdAt: order.paidAt,
+      status: 'queued', statusAt: order.paidAt, rush: false, createdAt: order.paidAt, ...(tabId && { tabId }),
     })
   }
   await db.queueItems.bulkAdd(rows)

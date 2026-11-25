@@ -1,6 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie'
 import type { Role } from '../lib/roles'
-import type { Cart } from '../lib/cart'
+import type { Cart, CartLine } from '../lib/cart'
 import type { QueueStatus, Station } from '../lib/queue'
 import type { ApprovalAction } from '../lib/approval'
 import type { PayMethod } from '../lib/payments'
@@ -10,6 +10,7 @@ import type { Report } from '../lib/reports'
 import type { BaseUnit, IngredientUnit } from '../lib/units'
 import type { RecipeLine } from '../lib/recipes'
 import type { StockKind } from '../lib/stock'
+import type { BillPart } from '../lib/split'
 
 // Every row has a device-made UUID id. Archive via `active: false`, never delete (rule 3).
 export type Branch = { id: string; name: string; active: boolean }
@@ -90,6 +91,8 @@ export type Order = {
   comps?: { lineId: string; name: string; qty: number; value: number; reason: string; note?: string }[] // lines given free on purpose; value = what they would have cost
   compApprovedBy?: string
   idempotencyKey: string // one tap = one order (also covers ₱0 comped orders, which have no payment rows)
+  tabId?: string // paid from a tab: its drinks were sent and its stock taken when each round was added, so paying does neither again
+  billId?: string
   status: 'paid' | 'void' // a voided order keeps its invoice number
   paidAt: string
   cashierId: string
@@ -132,6 +135,7 @@ export type QueueItem = {
   rush: boolean
   rushReason?: string
   createdAt: string
+  tabId?: string // made for a tab (orderId is the tab id and orderNumber is 0; the label is the table)
   remakeOf?: string // this ticket replaces a spilled or wrong one
   wasted?: boolean // made but not sold: stock counts it as waste (3C)
 }
@@ -250,6 +254,28 @@ export type StockCount = {
   status: 'submitted' | 'applied'; appliedAt?: string; appliedBy?: string
   idempotencyKey: string
 }
+// A table (or a table-tent number for counter orders a runner delivers).
+export type CafeTable = { id: string; branchId: string; name: string; seats: number; active: boolean }
+// A line on a tab: a cart line plus who added it and in which round. Names stay on the lines when a tab changes hands.
+export type TabLine = CartLine & { addedBy: string; round: number; seat?: number; fromTable?: string }
+export type TabEvent = { at: string; by: string; kind: 'open' | 'round' | 'move' | 'merge' | 'transfer' | 'bill' | 'paid' | 'walkout' | 'seat'; detail?: Record<string, unknown> }
+// An open tab: rounds added through the visit, paid at the end (whole, or split into bills). Never deleted: closed, merged or walkout.
+export type Tab = {
+  id: string; branchId: string; tableId: string; label: string
+  status: 'open' | 'closed' | 'merged' | 'walkout'
+  openedAt: string; openedBy: string
+  shiftId: string; cashierId: string // who is responsible now: changes at a shift change
+  lines: TabLine[]; rounds: number
+  settled: Record<string, number> // line id -> centavos already paid by earlier bills
+  events: TabEvent[]
+  mergedInto?: string
+  closedAt?: string; walkout?: { amount: number; reason: string; approvedBy: string; businessDate: string; shiftId: string }
+}
+// The bill printed for a tab. Adding another round supersedes it: the old one is marked so nobody pays from it.
+export type Bill = {
+  id: string; tabId: string; version: number; status: 'open' | 'superseded' | 'closed'
+  mode: 'item' | 'seat' | 'even' | 'custom' | 'fraction' | 'whole'; parts: BillPart[]; at: string; by: string
+}
 export type InvoicePrint = { id: string; orderId: string; userId: string; at: string; kind: 'original' | 'reprint'; approvedBy?: string }
 export type Payment = {
   id: string
@@ -358,6 +384,9 @@ export const db = new Dexie('demo-pos') as Dexie & {
   stockMoves: EntityTable<StockMove, 'id'>
   suppliers: EntityTable<Supplier, 'id'>
   stockCounts: EntityTable<StockCount, 'id'>
+  cafeTables: EntityTable<CafeTable, 'id'>
+  tabs: EntityTable<Tab, 'id'>
+  bills: EntityTable<Bill, 'id'>
   purchaseOrders: EntityTable<PurchaseOrder, 'id'>
   receipts: EntityTable<Receipt, 'id'>
   promoUses: EntityTable<PromoUse, 'id'>
@@ -451,4 +480,9 @@ db.version(21).stores({
 })
 db.version(22).stores({
   stockCounts: 'id, branchId, countedAt, &idempotencyKey',
+})
+db.version(23).stores({
+  cafeTables: 'id, branchId',
+  tabs: 'id, branchId, status, tableId',
+  bills: 'id, tabId',
 })

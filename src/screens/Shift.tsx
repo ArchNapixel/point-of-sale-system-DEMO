@@ -97,6 +97,7 @@ function DayChecklist({ dayId, userId }: { dayId: string; userId: string }) {
             <button disabled={!(reasons[s.id] ?? '').trim()} onClick={() => run(() => lateCloseShift(s.id, userId, reasons[s.id]))}>Late close</button>
           </li>
         ))}
+        <li>{list.openTabs.length === 0 ? '✓ No open tabs' : `✗ ${list.openTabs.length} open tab(s): bill them out, hand them over or close them as a walkout on the Tabs screen (${list.openTabs.map((t) => t.label).join(', ')})`}</li>
         <li>{list.heldCarts.length === 0 ? '✓ No held carts' : `✗ ${list.heldCarts.length} held cart(s)`}</li>
         {list.heldCarts.map((h) => (
           <li key={h.id} className="row">{h.label} <button onClick={() => run(() => discardHeld(h.id))}>Discard</button></li>

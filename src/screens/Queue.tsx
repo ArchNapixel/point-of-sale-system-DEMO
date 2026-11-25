@@ -51,7 +51,7 @@ export default function Queue() {
         return (
           <div key={first.orderId} className="card">
             <div className="row between">
-              <strong>#{first.orderNumber} {first.orderLabel} <small>{first.orderType}</small></strong>
+              <strong>{first.orderNumber > 0 && `#${first.orderNumber} `}{first.orderLabel} <small>{first.orderType}</small></strong>
               {first.rush && <strong className="allergy-note">RUSH: {first.rushReason}</strong>}
               {orderReady(items) && <strong>ORDER READY</strong>}
             </div>

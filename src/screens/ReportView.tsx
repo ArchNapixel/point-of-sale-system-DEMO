@@ -52,6 +52,7 @@ export default function ReportView({ title, report: r, onPrint }: { title: strin
         <R l="- Drops to safe" r={m(r.cash.drops)} />
         <R l="EXPECTED" r={m(r.cash.expected)} bold />
         <R l="No-sale opens" r={String(r.noSales)} />
+        <R l={`Walkouts (${r.walkouts.count}, a loss)`} r={m(r.walkouts.amount)} />
         <hr />
         <strong>Shifts (each on its own, never netted)</strong>
         {r.shifts.map((s) => (

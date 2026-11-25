@@ -26,6 +26,7 @@ import { Err, useAction } from '../ui'
 import ItemPicker from './ItemPicker'
 import Receipt from './Receipt'
 import ApprovalPrompt from './ApprovalPrompt'
+import { addRound } from '../db/tabs'
 import { getLimits } from '../db/approvals'
 import { needsApproval } from '../lib/approval'
 import { audit } from '../db/audit'
@@ -186,12 +187,58 @@ function DiscountPanel({ cart, vat, onApply, onCancel }: { cart: Cart; vat: bool
   )
 }
 
+export const billKey = (terminalId: string) => `pos-bill-${terminalId}` // set by the Tabs screen when a bill part is opened for payment
+export type BillContext = { tabId: string; billId: string; partId: string; label: string }
+function loadBill(terminalId: string): BillContext | null {
+  try {
+    const raw = localStorage.getItem(billKey(terminalId))
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+/** Send what is in the cart to a table's tab as a round: the bar starts, the stock is taken, and it is paid at the end. */
+function SendPanel({ terminalId, userId, cart, onSent, onCancel }: { terminalId: string; userId: string; cart: Cart; onSent: () => void; onCancel: () => void }) {
+  const data = useLiveQuery(async () => {
+    const terminal = await db.terminals.get(terminalId)
+    const tables = terminal ? (await db.cafeTables.where('branchId').equals(terminal.branchId).toArray()).filter((t) => t.active) : []
+    const tabs = (await db.tabs.where('status').equals('open').toArray()).filter((t) => t.branchId === terminal?.branchId)
+    return { tables: tables.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })), tabs }
+  }, [terminalId])
+  const [tableId, setTableId] = useState('')
+  const [seat, setSeat] = useState('')
+  const [key] = useState(newId)
+  const [busy, setBusy] = useState(false)
+  const { error, run } = useAction()
+  if (!data) return null
+  const busyTables = new Map(data.tabs.map((t) => [t.tableId, t]))
+  return (
+    <div className="card">
+      <h4>Send to a table</h4>
+      {data.tables.length === 0 && <p>No tables yet. The owner adds them on the Tabs screen.</p>}
+      <select aria-label="Table" value={tableId} onChange={(e) => setTableId(e.target.value)}>
+        <option value="">Pick a table</option>
+        {data.tables.map((t) => <option key={t.id} value={t.id}>{t.name}{busyTables.has(t.id) ? ' (open tab: add a round)' : ''}</option>)}
+      </select>
+      <input aria-label="Seat" inputMode="numeric" placeholder="Seat (optional)" size={10} value={seat} onChange={(e) => setSeat(e.target.value.replace(/\D/g, ''))} />
+      <Err msg={error} />
+      <div className="row">
+        <button onClick={onCancel}>Back</button>
+        <button className="primary" disabled={!tableId || busy} onClick={async () => { setBusy(true); if (await run(() => addRound({ terminalId, userId, tableId, cart, seat: seat ? Number(seat) : undefined, idempotencyKey: key }))) onSent(); setBusy(false) }}>Send round</button>
+      </div>
+    </div>
+  )
+}
+
 function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftId: string; user: User }) {
   const [cart, setCart] = useState<Cart>(() => loadCart(terminalId))
   const [history, setHistory] = useState<Cart[]>([]) // carts before each change to the lines, for Undo
   const [picking, setPicking] = useState<{ item: MenuItem; initial?: CartLine } | null>(null)
   const [catId, setCatId] = useState('')
   const [paying, setPaying] = useState(false)
+  const [sending, setSending] = useState(false)
+  const [bill, setBill] = useState<BillContext | null>(() => loadBill(terminalId))
   const [asking, setAsking] = useState<'discount' | 'comp' | null>(null)
   const [approval, setApproval] = useState<{ id: string; amount: number } | null>(null) // supervisor approval for a big discount
   const [compApproval, setCompApproval] = useState<{ id: string; amount: number } | null>(null) // ... and for a big comp
@@ -281,6 +328,10 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
       <section>
         <h2>Order</h2>
         {menu.length === 0 && <p>No items are on sale yet. The owner adds them on the Menu tab.</p>}
+        {bill ? (
+          <p>Paying <strong>{bill.label}</strong> from a tab. Its drinks are already made; add more on the tab.</p>
+        ) : (
+          <>
         <div className="cats">
           {menu.map((c) => (
             <button key={c.id} aria-pressed={c.id === category?.id} onClick={() => setCatId(c.id)}>{c.name}</button>
@@ -299,6 +350,8 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
             )
           })}
         </div>
+          </>
+        )}
         {picking && (
           <ItemPicker key={picking.initial?.id ?? picking.item.id} item={picking.item} initial={picking.initial} onConfirm={confirmPick} onCancel={() => setPicking(null)} />
         )}
@@ -344,6 +397,7 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
                   <button onClick={() => setComping('')}>Cancel</button>
                 </div>
               )}
+              {!bill && (
               <div className="row">
                 <button aria-label={`Less ${l.name}`} onClick={() => commit(changeQty(cart, l.id, -1))}>−</button>
                 <span className="qty">{l.qty}</span>
@@ -353,6 +407,7 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
                 <button onClick={() => { run(() => audit({ userId: user.id, action: 'line.void', detail: { name: l.name, qty: l.qty, amount: lineTotal(l) } })); commit(removeLine(cart, l.id)) }}>Remove</button>
                 <button onClick={() => { if (l.comp) commit({ ...cart, lines: cart.lines.map((x) => (x.id === l.id ? { ...x, comp: undefined } : x)) }); else { setReason(NO_REASON); setComping(l.id) } }}>{l.comp ? 'Undo comp' : 'Comp'}</button>
               </div>
+              )}
             </li>
           ))}
         </ul>
@@ -398,13 +453,16 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
           )
         )}
         <div className="row">
-          <button onClick={undo} disabled={history.length === 0}>Undo</button>
-          <button onClick={() => commit({ ...cart, lines: [] })} disabled={cart.lines.length === 0}>Clear</button>
-          <button onClick={hold} disabled={cart.lines.length === 0}>Hold</button>
+          {!bill && <button onClick={undo} disabled={history.length === 0}>Undo</button>}
+          {!bill && <button onClick={() => commit({ ...cart, lines: [] })} disabled={cart.lines.length === 0}>Clear</button>}
+          {!bill && <button onClick={hold} disabled={cart.lines.length === 0}>Hold</button>}
+          {!bill && <button onClick={() => { setPaying(false); setSending(true) }} disabled={cart.lines.length === 0}>Send to table</button>}
+          {bill && <button onClick={() => { localStorage.removeItem(billKey(terminalId)); setBill(null); setCart(emptyCart()); setPaying(false) }}>Back to tab</button>}
           <button onClick={() => { setPaying(false); setDiscounting(true) }} disabled={cart.lines.length === 0}>Senior/PWD</button>
           <button className="primary" onClick={() => proceed()} disabled={cart.lines.length === 0}>Take payment</button>
         </div>
         <Err msg={error} />
+        {sending && <SendPanel terminalId={terminalId} userId={user.id} cart={cart} onCancel={() => setSending(false)} onSent={() => { setCart(emptyCart()); setHistory([]); setSending(false) }} />}
         {discounting && (
           <DiscountPanel cart={cart} vat={vat} onCancel={() => setDiscounting(false)} onApply={(discount) => { setCart({ ...cart, discount }); setDiscounting(false) }} />
         )}
@@ -426,7 +484,8 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
             total={priced.total}
             onCancel={() => setPaying(false)}
             onPay={async (lines, key, buyer) => {
-              const { order, payments, change } = await payOrder(terminalId, user.id, cart, lines, key, buyer, { discount: askDiscount ? undefined : approval?.id, comp: askComp ? undefined : compApproval?.id })
+              const { order, payments, change } = await payOrder(terminalId, user.id, cart, lines, key, buyer, { discount: askDiscount ? undefined : approval?.id, comp: askComp ? undefined : compApproval?.id }, bill ? { tabId: bill.tabId, billId: bill.billId, partId: bill.partId } : undefined)
+              if (bill) { localStorage.removeItem(billKey(terminalId)); setBill(null) }
               setCart(emptyCart())
               setHistory([])
               setApproval(null)

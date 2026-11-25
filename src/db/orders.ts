@@ -1,6 +1,7 @@
 import { db, type DiscountLogEntry, type Order, type Payment } from './db'
 import { consumeApproval } from './approvals'
 import { createQueueItems } from './queue'
+import { settleBillPart } from './tabs'
 import { alertAfterSale, deductSale, syncModifierAvailability } from './stock'
 import { formatInvoiceNo } from '../lib/invoice'
 import { newId } from '../lib/id'
@@ -21,6 +22,7 @@ import { getSellContext } from './shifts'
  */
 export async function payOrder(
   terminalId: string, userId: string, cart: Cart, lines: PayLine[], idempotencyKey: string, buyer?: { name: string; tin: string }, approvals: { discount?: string; comp?: string } = {},
+  tab?: { tabId: string; billId: string; partId: string }, // paying one part of a tab's bill: its drinks and stock were taken when each round was sent
 ) {
   const prior = await db.orders.where('idempotencyKey').equals(idempotencyKey).first()
   if (prior) return { order: prior, payments: await db.payments.where('orderId').equals(prior.id).toArray() }
@@ -66,6 +68,7 @@ export async function payOrder(
       comps: cart.lines.filter((l) => l.comp).map((l) => ({ lineId: l.id, name: l.name, qty: l.qty, value: compValue(l), reason: l.comp!.code, ...(l.comp!.note.trim() && { note: l.comp!.note.trim() }) })),
     }),
     idempotencyKey,
+    ...(tab && { tabId: tab.tabId, billId: tab.billId }),
     status: 'paid',
     paidAt: at,
     cashierId: userId,
@@ -86,7 +89,7 @@ export async function payOrder(
     cashierId: userId,
   }))
   let sale: Awaited<ReturnType<typeof deductSale>> | undefined
-  await db.transaction('rw', [db.orders, db.payments, db.outbox, db.discountLog, db.counters, db.queueItems, db.queueEvents, db.items, db.categories, db.approvals, db.users, db.settings, db.promos, db.promoUses, db.stockMoves, db.recipes, db.ingredients], async () => {
+  await db.transaction('rw', [db.orders, db.payments, db.outbox, db.discountLog, db.counters, db.queueItems, db.queueEvents, db.items, db.categories, db.approvals, db.users, db.settings, db.promos, db.promoUses, db.stockMoves, db.recipes, db.ingredients, db.tabs, db.bills], async () => {
     const emp = order.employee
     if (emp) {
       const who = await db.users.get(emp.employeeId)
@@ -110,8 +113,12 @@ export async function payOrder(
     if (compApprover) order.compApprovedBy = compApprover
     order.invoiceNo = formatInvoiceNo(ctx.terminal.invoicePrefix, await nextInvoiceSeq(terminalId))
     await db.orders.add(order)
-    await createQueueItems(order, userId)
-    sale = await deductSale(order, userId) // stock goes down in the same save as the order; it may go negative, never blocks
+    if (tab) {
+      await settleBillPart(order, tab.billId, tab.partId, userId)
+    } else {
+      await createQueueItems(order, userId)
+      sale = await deductSale(order, userId) // stock goes down in the same save as the order; it may go negative, never blocks
+    }
     const d = order.discount
     if (d) {
       const repeatId = (await db.discountLog.where('idNumber').equals(d.idNumber).and((r) => r.businessDate === order.businessDate).count()) > 0

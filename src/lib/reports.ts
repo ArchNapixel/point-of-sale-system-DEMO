@@ -1,4 +1,4 @@
-import type { CashMovement, Order, Payment, Refund, Shift } from '../db/db'
+import type { CashMovement, Order, Payment, Refund, Shift, Tab } from '../db/db'
 import { invoiceFigures } from './invoice'
 import type { PayMethod } from './payments'
 
@@ -15,6 +15,7 @@ export type Report = {
   net: number
   comps: { count: number; value: number }
   noSales: number
+  walkouts: { count: number; amount: number } // tables that left without paying: a loss, kept apart from voids
   seniorPwd: { count: number; vatExempt: number; reduction: number }
   vat: { vatable: number; vat: number; vatExempt: number; nonVatSales: number }
   payments: Record<PayMethod, MethodRow>
@@ -28,6 +29,7 @@ const sum = <T,>(xs: T[], f: (x: T) => number) => xs.reduce((s, x) => s + f(x), 
 
 export function buildReport(i: {
   orders: Order[]; payments: Payment[]; refunds: Refund[]; moves: CashMovement[]; shifts: (Shift & { expectedCash: number })[]
+  walkouts?: Tab[]
   refundedPayments?: Payment[] // payments of the orders refunded in scope, which may be sales from an earlier day
 }): Report {
   const { orders, payments, refunds, moves, shifts } = i
@@ -60,6 +62,7 @@ export function buildReport(i: {
     net: gross - d.seniorPwd - d.promo - d.staff - sum(refunds, (r) => r.amount),
     comps: { count: sum(live, (o) => o.comps?.length ?? 0), value: sum(live, (o) => sum(o.comps ?? [], (c) => c.value)) },
     noSales: moves.filter((m) => m.kind === 'no-sale').length,
+    walkouts: { count: (i.walkouts ?? []).length, amount: sum(i.walkouts ?? [], (t) => t.walkout?.amount ?? 0) },
     seniorPwd: { count: live.filter((o) => o.discount).length, vatExempt: sum(live, (o) => o.discount?.vatExempt ?? 0), reduction: sum(live, (o) => o.discount?.reduction ?? 0) },
     vat: {
       vatable: sum(figs, (f) => (f.vatRegistered ? f.vatable : 0)),

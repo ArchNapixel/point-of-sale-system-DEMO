@@ -22,7 +22,8 @@ export async function loadReport(scope: Scope): Promise<Report> {
   const payments = await db.payments.where('orderId').anyOf(orders.map((o) => o.id)).toArray()
   const refundedPayments = await db.payments.where('orderId').anyOf([...new Set(refunds.map((r) => r.orderId))]).toArray()
   const withExpected = await Promise.all(shifts.map(async (s) => ({ ...s, expectedCash: await expectedCash(s.id) })))
-  return buildReport({ orders, payments, refunds, moves, shifts: withExpected, refundedPayments })
+  const walkouts = (await db.tabs.where('status').equals('walkout').toArray()).filter((t) => t.walkout && ids.includes(t.walkout.shiftId))
+  return buildReport({ orders, payments, refunds, moves, shifts: withExpected, refundedPayments, walkouts })
 }
 
 /** The Senior/PWD discount log for a scope, newest first (the owner's tax-claim record). */

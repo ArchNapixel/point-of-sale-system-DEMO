@@ -8,7 +8,7 @@ export default function CupLabels({ items, onClose }: { items: QueueItem[]; onCl
       <div className="print-area">
         {labels.map(({ i, n }) => (
           <div key={`${i.id}-${n}`} className="label">
-            <strong>#{i.orderNumber} {i.orderLabel}</strong>
+            <strong>{i.orderNumber > 0 && `#${i.orderNumber} `}{i.orderLabel}</strong>
             <div><strong>{i.name}</strong> <small>{i.variantLabel}</small></div>
             {i.mods.length > 0 && <div>{i.mods.join(', ')}</div>}
             {i.notes.length > 0 && <div>{i.notes.join(' · ')}</div>}

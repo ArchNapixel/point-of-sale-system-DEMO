@@ -129,8 +129,8 @@ Because there is no seed data, you need screens to enter it.
 ## Phase 4 — Extras
 
 ### 4A — Tables and tabs
-- [ ] Tables, open tabs, move/merge, transfer at shift change
-- [ ] Split bill (item/seat/even/custom/fraction), superseded bills, walkout
+- [x] Tables, open tabs, move/merge, transfer at shift change
+- [x] Split bill (item/seat/even/custom/fraction), superseded bills, walkout
 
 ### 4B — Pre-orders and delivery
 - [ ] Pre-orders with deposits, bulk-order timeline

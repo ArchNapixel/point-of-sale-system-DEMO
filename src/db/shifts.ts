@@ -61,7 +61,6 @@ export async function openBusinessDay(branchId: string, userId: string): Promise
 
 /**
  * What still stops the day from closing: open shifts, held carts and e-wallet payments nobody verified yet.
- * ponytail: the workflow also lists open tabs; there are no tabs in this build, so nothing to check for them.
  */
 export async function dayCloseChecklist(dayId: string) {
   const day = await db.businessDays.get(dayId)
@@ -72,7 +71,8 @@ export async function dayCloseChecklist(dayId: string) {
   const openShifts = shifts.filter((s) => !s.closedAt)
   const heldCarts = (await db.heldCarts.where('status').equals('held').toArray()).filter((h) => shiftIds.has(h.shiftId))
   const pendingPayments = (await db.payments.where('orderId').anyOf(orderIds).toArray()).filter((p) => p.status === 'pending')
-  return { openShifts, heldCarts, pendingPayments, ok: openShifts.length + heldCarts.length + pendingPayments.length === 0 }
+  const openTabs = (await db.tabs.where('branchId').equals(day.branchId).toArray()).filter((t) => t.status === 'open')
+  return { openShifts, heldCarts, pendingPayments, openTabs, ok: openShifts.length + heldCarts.length + pendingPayments.length + openTabs.length === 0 }
 }
 
 /** Closing is blocked until the checklist is clear (rule 1 is about sales; the day close is where loose ends are tied up). */
@@ -84,6 +84,7 @@ export async function closeBusinessDay(dayId: string, userId: string) {
   }
   if (list.heldCarts.length > 0) throw new Error(`${list.heldCarts.length} held cart(s) are still open. Pick them up or discard them first.`)
   if (list.pendingPayments.length > 0) throw new Error(`${list.pendingPayments.length} GCash/Maya payment(s) are still pending verification.`)
+  if (list.openTabs.length > 0) throw new Error(`${list.openTabs.length} tab(s) are still open. Bill them out, transfer them or close them as a walkout first.`)
   return db.transaction('rw', TABLES, async () => {
     const day = await db.businessDays.get(dayId)
     if (!day || day.closedAt) throw new Error('No open day to close')
@@ -209,6 +210,7 @@ export async function getCloseSummary(shiftId: string) {
     // Flagged for the closer, never blocking (day close is where open items block, 2E).
     heldCarts: (await db.heldCarts.where('shiftId').equals(shiftId).toArray()).filter((h) => h.status === 'held').length,
     pendingPayments: (await db.payments.where('orderId').anyOf(orderIds).toArray()).filter((p) => p.status === 'pending').length,
+    openTabs: (await db.tabs.where('branchId').equals((await db.businessDays.get(shift.businessDayId))!.branchId).toArray()).filter((t) => t.status === 'open' && t.shiftId === shiftId).length,
   }
 }
 

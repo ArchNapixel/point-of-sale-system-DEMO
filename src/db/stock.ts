@@ -41,7 +41,7 @@ export async function negativeStock(branchId?: string) {
  * Never blocks a sale: a drink with no recipe uses nothing, and stock may go negative. Comped lines still deduct.
  * Returns what went below zero (the caller alerts after the sale is saved).
  */
-export async function deductSale(order: Order, userId: string) {
+export async function deductSale(order: Pick<Order, 'id' | 'branchId' | 'orderType' | 'lines' | 'paidAt'>, userId: string) {
   const moves: NewMove[] = []
   const costs = new Map((await db.ingredients.toArray()).map((i) => [i.id, i.avgCostMilli]))
   for (const l of order.lines) {
