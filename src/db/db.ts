@@ -1,5 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie'
 import type { Role } from '../lib/roles'
+import type { Cart } from '../lib/cart'
 
 // Every row has a device-made UUID id. Archive via `active: false`, never delete (rule 3).
 export type Branch = { id: string; name: string; active: boolean }
@@ -42,6 +43,18 @@ export type Modifier = {
 }
 // A variant is one sellable size/temperature of an item and carries the base price in centavos.
 export type Variant = { id: string; itemId: string; size?: string; temp?: 'hot' | 'iced'; price: number; active: boolean }
+// A cart set aside while the cashier serves someone else. Never deleted: resumed or discarded instead.
+export type HeldCart = {
+  id: string
+  terminalId: string
+  shiftId: string
+  heldBy: string
+  heldAt: string
+  label: string
+  cart: Cart
+  status: 'held' | 'resumed' | 'discarded'
+}
+export type Counter = { id: string; last: number }
 export type Denoms = Record<string, number> // denomination key -> piece count (see shifts.ts DENOMS)
 export type BusinessDay = {
   id: string
@@ -95,6 +108,8 @@ export const db = new Dexie('demo-pos') as Dexie & {
   variants: EntityTable<Variant, 'id'>
   modifierGroups: EntityTable<ModifierGroup, 'id'>
   modifiers: EntityTable<Modifier, 'id'>
+  heldCarts: EntityTable<HeldCart, 'id'>
+  counters: EntityTable<Counter, 'id'>
 }
 
 db.version(1).stores({
@@ -118,4 +133,8 @@ db.version(3).stores({
 db.version(4).stores({
   modifierGroups: 'id',
   modifiers: 'id, groupId',
+})
+db.version(5).stores({
+  heldCarts: 'id, terminalId, shiftId, status',
+  counters: 'id',
 })

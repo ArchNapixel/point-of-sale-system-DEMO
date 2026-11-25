@@ -36,11 +36,11 @@ Because there is no seed data, you need screens to enter it.
 - [x] Modifier prices per variant, "first N free", ₱0 modifiers (no ice, sugar level)
 
 ### 1E — Order screen (cart)
-- [ ] Order type: dine-in, takeout, pickup
-- [ ] Add items; required modifier prompts; live line price
-- [ ] Note chips, duplicate line, easy minus, undo last add
-- [ ] Order number plus name; hold a cart and pick it back up
-- [ ] Prices copied onto each order line
+- [x] Order type: dine-in, takeout, pickup
+- [x] Add items; required modifier prompts; live line price
+- [x] Note chips, duplicate line, easy minus, undo last add
+- [x] Customer name or table, hold a cart and pick it back up; order number counter built (`nextOrderNumber`), the number is given at payment in 1F
+- [x] Prices copied onto each order line
 
 ### 1F — Cash payment (first complete sale)
 - [ ] Cash tendered, change shown large, quick buttons (exact, ₱100, ₱500, ₱1,000)

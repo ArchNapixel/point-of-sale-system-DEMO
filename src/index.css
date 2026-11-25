@@ -26,6 +26,29 @@ button.primary { font-weight: 700; }
 .add-item label { display: grid; gap: 0.25rem; }
 .add-item fieldset { border: 1px solid #ddd; border-radius: 6px; }
 .add-item fieldset label { display: inline; }
+.order { display: grid; grid-template-columns: 1fr 24rem; gap: 1rem; align-items: start; }
+@media (max-width: 800px) { .order { grid-template-columns: 1fr; } }
+.cats, .seg, .choices { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.5rem 0; }
+button[aria-pressed='true'] { background: #222; color: #fff; }
+.items { display: grid; grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr)); gap: 0.5rem; }
+.item-btn { min-height: 76px; display: grid; gap: 0.2rem; align-content: center; }
+.item-btn:disabled { opacity: 0.5; }
+.cart { display: grid; gap: 0.6rem; position: sticky; top: 0.5rem; }
+.cart .seg button { flex: 1; }
+.lines { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.6rem; }
+.lines li { border-bottom: 1px solid #e5e5e5; padding-bottom: 0.5rem; }
+.line-main { display: flex; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.3rem; }
+.qty { font-size: 1.5rem; font-weight: 700; min-width: 2ch; text-align: center; }
+.total { font-size: 1.4rem; }
+.empty { opacity: 0.6; }
+.allergy-note { color: #fff; background: #b00020; font-weight: 700; padding: 0.1rem 0.4rem; display: inline-block; margin-top: 0.2rem; }
+.picker { margin-top: 1rem; border-width: 2px; }
+.picker fieldset { border: 1px solid #ddd; border-radius: 6px; margin: 0 0 0.6rem; }
+.choice { display: inline-flex; gap: 0.25rem; align-items: center; }
+.stepper { display: inline-flex; gap: 0.25rem; align-items: center; }
+button.allergy[aria-pressed='true'] { background: #b00020; }
+.hints { color: #8a5a00; margin: 0.25rem 0; padding-left: 1.1rem; }
+.live-price { font-size: 1.6rem; }
 .item { border-top: 1px solid #e5e5e5; padding: 0.5rem 0; }
 .item ul { margin: 0.4rem 0; }
 .row.inline { display: inline-flex; }

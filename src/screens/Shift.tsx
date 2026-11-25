@@ -5,11 +5,11 @@ import { db, type Denoms, type Shift as ShiftRow } from '../db/db'
 import {
   DENOMS, closeBusinessDay, countTotal, expectedFloat, getOpenDay, getOpenShift, lateCloseShift, openBusinessDay, openShift,
 } from '../db/shifts'
+import { DEVICE_KEY, resolveTerminal } from '../db/device'
 import { can } from '../lib/roles'
 import { formatPeso } from '../lib/money'
 import { Err, useAction } from '../ui'
 
-const DEVICE_KEY = 'pos-terminal' // which terminal this browser/tablet is
 
 const when = (iso: string) => new Date(iso).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })
 
@@ -19,7 +19,7 @@ export default function Shift() {
   if (!terminals) return null
   if (terminals.length === 0) return <p>No terminal yet. The owner adds one in Setup.</p>
 
-  const terminal = terminals.find((t) => t.id === stored) ?? terminals[0]
+  const terminal = resolveTerminal(terminals, stored)!
   const pick = (id: string) => {
     localStorage.setItem(DEVICE_KEY, id)
     setStored(id)
