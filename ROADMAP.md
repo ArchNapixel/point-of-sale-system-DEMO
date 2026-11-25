@@ -99,8 +99,8 @@ Because there is no seed data, you need screens to enter it.
 - [x] Owner dashboard: net sales, over/short, voids/refunds/comps/no-sales, senior/PWD log, payment breakdown
 
 ### 2F — Staff extras
-- [ ] Fast user switch, auto-lock, PIN reset by owner
-- [ ] Clock-in/out hours export
+- [x] Fast user switch, auto-lock, PIN reset by owner
+- [x] Clock-in/out hours export
 
 **Demo moments:** void-after-payment needing a PIN · day close blocked by an open tab
 

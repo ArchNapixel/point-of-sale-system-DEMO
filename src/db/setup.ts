@@ -1,4 +1,5 @@
 import { db, type Branch, type Terminal, type User } from './db'
+import { audit } from './audit'
 import { newId } from '../lib/id'
 import { hashPin, isValidPin } from '../lib/pin'
 import type { Role } from '../lib/roles'
@@ -37,7 +38,8 @@ export async function createUser(name: string, role: Role, pin: string): Promise
   return u
 }
 
-export async function updateUser(id: string, patch: { name: string; role: Role; pin?: string }) {
+/** Owner edits a staff member. Setting a new PIN works at once and is audited (reset a leaked PIN in a second). */
+export async function updateUser(id: string, patch: { name: string; role: Role; pin?: string }, actorId?: string) {
   const u = await db.users.get(id)
   if (!u) throw new Error('User not found')
   if (!patch.name.trim()) throw new Error('Name is required')
@@ -48,6 +50,8 @@ export async function updateUser(id: string, patch: { name: string; role: Role; 
     role: patch.role,
     ...(patch.pin ? { pinHash: await hashPin(patch.pin) } : {}),
   })
+  if (patch.pin && actorId) await audit({ userId: actorId, action: 'user.pinReset', ref: id })
+  if (patch.role !== u.role && actorId) await audit({ userId: actorId, action: 'user.roleChange', ref: id, detail: { from: u.role, to: patch.role } })
 }
 
 /** Archive or restore. Never delete (design rule 3). */

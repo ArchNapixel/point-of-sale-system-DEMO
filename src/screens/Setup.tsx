@@ -1,3 +1,4 @@
+import { useAuth } from '../auth'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, type User } from '../db/db'
@@ -164,13 +165,14 @@ const PinInput = ({ label, value, onChange }: { label: string; value: string; on
 )
 
 function UserEditor({ user, done }: { user: User; done: () => void }) {
+  const { user: me } = useAuth()
   const [name, setName] = useState(user.name)
   const [role, setRole] = useState<Role>(user.role)
   const [pin, setPin] = useState('')
   const { error, run } = useAction()
   const save = async (e: FormEvent) => {
     e.preventDefault()
-    if (await run(() => updateUser(user.id, { name, role, pin: pin || undefined }))) done()
+    if (await run(() => updateUser(user.id, { name, role, pin: pin || undefined }, me?.id))) done()
   }
   return (
     <form onSubmit={save} className="row">

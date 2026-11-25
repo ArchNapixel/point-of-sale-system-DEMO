@@ -179,6 +179,16 @@ export type Remake = {
 export type PromoUse = { id: string; promoId: string; promoName: string; code?: string; orderId: string; terminalId: string; businessDate: string; at: string; amount: number }
 // The end-of-day (Z) report, frozen when the day closed. Later changes never rewrite it.
 export type ZReport = { id: string; businessDayId: string; branchId: string; date: string; at: string; by: string; report: Report }
+// Clock-in/out for payroll hours (payroll itself is out of scope). edits keeps what a supervisor changed and why.
+export type TimeEntry = {
+  id: string
+  userId: string
+  terminalId: string
+  inAt: string
+  outAt?: string
+  businessDate: string
+  edits?: { at: string; by: string; reason: string; was: { inAt: string; outAt?: string } }[]
+}
 export type InvoicePrint = { id: string; orderId: string; userId: string; at: string; kind: 'original' | 'reprint'; approvedBy?: string }
 export type Payment = {
   id: string
@@ -281,6 +291,7 @@ export const db = new Dexie('demo-pos') as Dexie & {
   refunds: EntityTable<Refund, 'id'>
   promos: EntityTable<Promo, 'id'>
   zReports: EntityTable<ZReport, 'id'>
+  timeEntries: EntityTable<TimeEntry, 'id'>
   promoUses: EntityTable<PromoUse, 'id'>
   cashMovements: EntityTable<CashMovement, 'id'>
   remakes: EntityTable<Remake, 'id'>
@@ -352,4 +363,7 @@ db.version(15).stores({
 })
 db.version(16).stores({
   zReports: 'id, &businessDayId, date',
+})
+db.version(17).stores({
+  timeEntries: 'id, userId, businessDate',
 })
