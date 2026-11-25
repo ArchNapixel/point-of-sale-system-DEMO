@@ -1,0 +1,1 @@
+export const DEMO_FOOTER = 'DEMO — NOT A VALID INVOICE'

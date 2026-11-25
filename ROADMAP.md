@@ -3,10 +3,10 @@
 Derived from section 19 of [CAFE_WORKFLOW.md](CAFE_WORKFLOW.md). Phase 1 alone is a convincing demo; Phases 2–3 make it feel built by someone who has worked in a café. Check items off as they ship.
 
 ## Phase 0 — Foundations
-- [ ] Choose stack (offline-capable local DB + sync, tablet UI, printing) and record it in [CLAUDE.md](CLAUDE.md)
-- [ ] Project scaffold and test runner (no seed data; data is entered by hand)
-- [ ] Core entities: Branch, Terminal, User, Role, Permission, Settings (VAT, float, tolerance, cutoff, limits)
-- [ ] Money as integer centavos; UUID generation on device; AuditLog helper; "DEMO — NOT A VALID INVOICE" receipt footer
+- [x] Choose stack (offline-capable local DB + sync, tablet UI, printing) and record it in [CLAUDE.md](CLAUDE.md)
+- [x] Project scaffold and test runner (no seed data; data is entered by hand)
+- [x] Core entities: Branch, Terminal, User, Role, Permission, Settings (VAT, float, tolerance, cutoff, limits)
+- [x] Money as integer centavos; UUID generation on device; AuditLog helper; "DEMO — NOT A VALID INVOICE" receipt footer
 
 ## Phase 1 — Core sale
 - [ ] BusinessDay + Shift: open day, open shift with float counted by denomination, float mismatch flag, block on unclosed prior shift

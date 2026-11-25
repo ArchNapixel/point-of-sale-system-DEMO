@@ -1,0 +1,22 @@
+import { db } from './db'
+import { pesos } from '../lib/money'
+
+// Every threshold lives here (design rule 7). Owner edits at runtime; these are only fallbacks.
+export const DEFAULT_SETTINGS = {
+  vatRegistered: true as boolean,
+  dayCutoffHour: 4, // sales before 4 AM belong to the previous business date
+  floatCentavos: pesos(2000),
+  overShortToleranceCentavos: pesos(20),
+  smallWaiveCapCentavos: pesos(5),
+  cashDropLimitCentavos: pesos(10000),
+  platformCommissionPct: 20,
+}
+
+export type SettingKey = keyof typeof DEFAULT_SETTINGS
+
+export async function getSetting<K extends SettingKey>(key: K): Promise<(typeof DEFAULT_SETTINGS)[K]> {
+  const row = await db.settings.get(key)
+  return (row ? row.value : DEFAULT_SETTINGS[key]) as (typeof DEFAULT_SETTINGS)[K]
+}
+
+export const setSetting = (key: SettingKey, value: string | number | boolean) => db.settings.put({ key, value })
