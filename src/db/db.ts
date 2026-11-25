@@ -4,7 +4,8 @@ import type { Cart } from '../lib/cart'
 import type { QueueStatus, Station } from '../lib/queue'
 import type { ApprovalAction } from '../lib/approval'
 import type { PayMethod } from '../lib/payments'
-import type { OrderDiscount } from '../lib/discount'
+import type { AppliedEmployee, AppliedPromo, OrderDiscount } from '../lib/discount'
+import type { Promo } from '../lib/promos'
 
 // Every row has a device-made UUID id. Archive via `active: false`, never delete (rule 3).
 export type Branch = { id: string; name: string; active: boolean }
@@ -78,7 +79,9 @@ export type Order = {
   gross: number // centavos before any discount
   total: number // centavos the customer pays (gross - discount.reduction)
   discount?: OrderDiscount
-  discountApprovedBy?: string // set when the discount was above the cashier's limit
+  discountApprovedBy?: string // set when the discount (Senior/PWD or staff) was above the cashier's limit
+  promo?: AppliedPromo // the one promo that applied (never stacked with a discount)
+  employee?: AppliedEmployee // staff discount
   comps?: { lineId: string; name: string; qty: number; value: number; reason: string; note?: string }[] // lines given free on purpose; value = what they would have cost
   compApprovedBy?: string
   idempotencyKey: string // one tap = one order (also covers ₱0 comped orders, which have no payment rows)
@@ -171,6 +174,8 @@ export type Remake = {
   id: string; itemId: string; newItemId: string; orderId: string; name: string; station: string; qty: number
   reasonCode: string; reasonNote?: string; userId: string; businessDate: string; at: string
 }
+// Where a promo was used: a log per use, so a voucher code shows who got it, when and on which order.
+export type PromoUse = { id: string; promoId: string; promoName: string; code?: string; orderId: string; terminalId: string; businessDate: string; at: string; amount: number }
 export type InvoicePrint = { id: string; orderId: string; userId: string; at: string; kind: 'original' | 'reprint'; approvedBy?: string }
 export type Payment = {
   id: string
@@ -271,6 +276,8 @@ export const db = new Dexie('demo-pos') as Dexie & {
   invoicePrints: EntityTable<InvoicePrint, 'id'>
   approvals: EntityTable<Approval, 'id'>
   refunds: EntityTable<Refund, 'id'>
+  promos: EntityTable<Promo, 'id'>
+  promoUses: EntityTable<PromoUse, 'id'>
   cashMovements: EntityTable<CashMovement, 'id'>
   remakes: EntityTable<Remake, 'id'>
   queueItems: EntityTable<QueueItem, 'id'>
@@ -334,4 +341,8 @@ db.version(13).stores({
 })
 db.version(14).stores({
   cashMovements: 'id, shiftId, businessDate, &idempotencyKey',
+})
+db.version(15).stores({
+  promos: 'id, code, active',
+  promoUses: 'id, promoId, orderId, businessDate',
 })

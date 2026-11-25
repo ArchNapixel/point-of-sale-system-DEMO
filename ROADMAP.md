@@ -55,7 +55,7 @@ Because there is no seed data, you need screens to enter it.
 ### 1H — Senior/PWD discount
 - [x] VAT-aware formula picked by the store setting
 - [x] Tick which lines belong to the ID holder; capture name and ID number
-- [x] One statutory discount per purchase (lower-price-wins against promos is built with promos in 2D)
+- [x] One statutory discount per purchase (lower-price-wins against promos: built in 2D)
 - [x] Discount log with repeat-ID flag
 
 ### 1I — Invoices
@@ -91,7 +91,7 @@ Because there is no seed data, you need screens to enter it.
 - [x] Expected drawer cash includes them
 
 ### 2D — Promos
-- [ ] Time windows, min-spend recheck, B1T1, single-use codes, employee discount
+- [x] Time windows, min-spend recheck, B1T1, single-use codes, employee discount
 
 ### 2E — Day close and reports
 - [ ] Day-close checklist (blocks on open tabs, held carts, pending GCash, open shifts)

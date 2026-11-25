@@ -39,6 +39,7 @@ export default function Receipt({ orderId, onClose }: { orderId: string; onClose
   if (!data || !user) return null
   const { order: o, payments, cashier, prints, store, voided } = data
   const f = invoiceFigures(o)
+  const otherLabel = o.promo ? `Promo: ${o.promo.name}` : o.employee ? `Staff discount (${o.employee.name})` : ''
   const d = o.discount
   const change = payments.reduce((s, p) => s + p.tendered - p.amount, 0)
   return (
@@ -67,11 +68,13 @@ export default function Receipt({ orderId, onClose }: { orderId: string; onClose
             <R l="VAT 12%" r={formatPeso(f.vat)} />
             <R l="VAT-exempt sales" r={formatPeso(f.vatExempt)} />
             {f.discount > 0 && <R l={`Less ${d?.kind === 'pwd' ? 'PWD' : 'Senior'} 20%`} r={`-${formatPeso(f.discount)}`} />}
+            {f.other > 0 && <R l={`${otherLabel} (already off the sales above)`} r={`-${formatPeso(f.other)}`} />}
           </>
         ) : (
           <>
             <R l="Sales" r={formatPeso(f.sales)} />
             {f.discount > 0 && <R l={`Less ${d?.kind === 'pwd' ? 'PWD' : 'Senior'} 20%`} r={`-${formatPeso(f.discount)}`} />}
+            {f.other > 0 && <R l={`Less ${otherLabel}`} r={`-${formatPeso(f.other)}`} />}
             <div className="center">NON-VAT REGISTERED</div>
           </>
         )}

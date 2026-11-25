@@ -8,6 +8,8 @@ import { discardHeld, holdCart, listHeld, resumeHeld } from '../db/carts'
 import { DEVICE_KEY, resolveTerminal } from '../db/device'
 import { payOrder } from '../db/orders'
 import { getSetting } from '../db/settings'
+import { checkCode } from '../db/promos'
+import { listActiveUsers } from '../db/users'
 import { waitEstimate } from '../lib/queue'
 import { priceCart, validateStatutory, type StatutoryInput } from '../lib/discount'
 import { PAY_METHODS, applyLines, type PayLine, type PayMethod } from '../lib/payments'
@@ -200,6 +202,11 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
   const [showInvoice, setShowInvoice] = useState(false)
   const [discounting, setDiscounting] = useState(false)
   const vat = useLiveQuery(() => getSetting('vatRegistered'), [])
+  const promos = useLiveQuery(() => db.promos.filter((p) => p.active).toArray(), [])
+  const empPct = useLiveQuery(() => getSetting('employeeDiscountPct'), [])
+  const staff = useLiveQuery(listActiveUsers, [])
+  const [code, setCode] = useState('')
+  const [pickingStaff, setPickingStaff] = useState(false)
   const open = useLiveQuery(() => db.queueItems.where('status').anyOf('queued', 'making').toArray(), [])
   const perItem = useLiveQuery(() => getSetting('queueMinutesPerItem'), [])
   const [done, setDone] = useState<{ orderId: string; number: number; change: number; pending: boolean } | null>(null)
@@ -211,11 +218,12 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
     localStorage.setItem(cartKey(terminalId), JSON.stringify(cart))
   }, [cart, terminalId])
 
-  if (!menu || !held || vat === undefined || !open || perItem === undefined || !limits) return null
+  if (!menu || !held || vat === undefined || !open || perItem === undefined || !limits || !promos || empPct === undefined || !staff) return null
   const bar = waitEstimate(open, 'bar', perItem)
   const kitchen = waitEstimate(open, 'kitchen', perItem)
-  const priced = priceCart(cart, vat)
-  const reduction = priced.discount?.reduction ?? 0
+  // One reduction only: Senior/PWD, staff or the best promo, whichever gives the lowest price. Re-worked on every cart change.
+  const priced = priceCart(cart, vat, { promos, employeePct: empPct })
+  const reduction = priced.discount?.reduction ?? priced.employee?.reduction ?? 0
   const comped = compTotal(cart)
   const askDiscount = needsApproval(user.role, 'discount', reduction, limits) && !(approval && approval.amount >= reduction)
   const askComp = needsApproval(user.role, 'comp', comped, limits) && !(compApproval && compApproval.amount >= comped)
@@ -358,6 +366,36 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
             <small>{priced.discount.kind === 'senior' ? 'Senior' : 'PWD'} discount ({priced.discount.name}) −{formatPeso(priced.discount.reduction)}</small>
             <button onClick={() => setCart({ ...cart, discount: undefined })}>Remove</button>
           </div>
+        )}
+        {priced.employee && (
+          <div className="row between">
+            <small>Staff discount {priced.employee.pct}% ({priced.employee.name}) −{formatPeso(priced.employee.reduction)}</small>
+            <button onClick={() => setCart({ ...cart, employee: undefined })}>Remove</button>
+          </div>
+        )}
+        {priced.promo && (
+          <div className="row between">
+            <small>Promo: {priced.promo.name}{priced.promo.code && ` (${priced.promo.code})`} −{formatPeso(priced.promo.reduction)}</small>
+          </div>
+        )}
+        {priced.considered.length > 1 && (
+          <small role="status">{priced.considered.map((c) => `${c.label} ${formatPeso(c.total)}`).join(' vs ')}: the lower price applies, never both.</small>
+        )}
+        {cart.discount && priced.statutoryLost && <small role="status">The Senior/PWD discount is not used because a lower price applies.</small>}
+        <div className="row">
+          <input aria-label="Promo code" placeholder="Promo code" value={code} onChange={(e) => setCode(e.target.value)} />
+          <button disabled={!code.trim()} onClick={() => run(async () => { const p = await checkCode(code); setCart({ ...cart, promoCode: p.code }); setCode('') })}>Apply code</button>
+          {cart.promoCode && <button onClick={() => setCart({ ...cart, promoCode: undefined })}>Remove code {cart.promoCode}</button>}
+        </div>
+        {empPct > 0 && !cart.employee && !cart.discount && (
+          pickingStaff ? (
+            <select aria-label="Staff member" defaultValue="" onChange={(e) => { const u = staff.find((x) => x.id === e.target.value); if (u) setCart({ ...cart, employee: { id: u.id, name: u.name } }); setPickingStaff(false) }}>
+              <option value="">Who is it for?</option>
+              {staff.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+          ) : (
+            <button onClick={() => setPickingStaff(true)} disabled={cart.lines.length === 0}>Staff discount</button>
+          )
         )}
         <div className="row">
           <button onClick={undo} disabled={history.length === 0}>Undo</button>

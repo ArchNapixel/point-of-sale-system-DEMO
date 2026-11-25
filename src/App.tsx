@@ -11,8 +11,9 @@ import Menu from './screens/Menu'
 import Order from './screens/Order'
 import Orders from './screens/Orders'
 import Queue from './screens/Queue'
+import Promos from './screens/Promos'
 
-type Tab = 'shift' | 'order' | 'orders' | 'queue' | 'menu' | 'setup' | 'settings'
+type Tab = 'shift' | 'order' | 'orders' | 'queue' | 'promos' | 'menu' | 'setup' | 'settings'
 
 export default function App() {
   const { user, ready, logout } = useAuth()
@@ -27,6 +28,7 @@ export default function App() {
   if (can(user.role, 'sell')) tabs.push({ id: 'orders', label: 'Orders' })
   if (can(user.role, 'viewQueue')) tabs.push({ id: 'queue', label: 'Queue' })
   if (can(user.role, 'editPrices') || can(user.role, 'markSoldOut')) tabs.push({ id: 'menu', label: 'Menu' })
+  if (can(user.role, 'editPrices')) tabs.push({ id: 'promos', label: 'Promos' })
   if (can(user.role, 'manageSetup')) tabs.push({ id: 'setup', label: 'Setup' }, { id: 'settings', label: 'Settings' })
   const current = tabs.some((t) => t.id === tab) ? tab : tabs[0]?.id
 
@@ -51,6 +53,7 @@ export default function App() {
         {current === 'order' && <Order />}
         {current === 'orders' && <Orders />}
         {current === 'queue' && <Queue />}
+        {current === 'promos' && <Promos />}
         {current === 'menu' && <Menu />}
         {current === 'setup' && <Setup />}
         {current === 'settings' && <Settings />}

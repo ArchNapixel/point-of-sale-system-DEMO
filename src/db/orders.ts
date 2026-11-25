@@ -26,10 +26,10 @@ export async function payOrder(
   if (cartCount(cart) === 0) throw new Error('The cart is empty')
   for (const l of cart.lines) if (l.comp) checkReason(l.comp.code, l.comp.note)
   const vat = await getSetting('vatRegistered')
-  const priced = priceCart(cart, vat)
+  const priced = priceCart(cart, vat, { promos: (await db.promos.toArray()).filter((p) => p.active), employeePct: await getSetting('employeeDiscountPct') })
   if (cart.discount) {
     validateStatutory(cart.discount)
-    if (!priced.discount) throw new Error('Tick the items that belong to the ID holder')
+    if (!priced.discount && !priced.statutoryLost) throw new Error('Tick the items that belong to the ID holder') // lost = a better price applied instead
   }
   const total = priced.total
   const { applied, remaining, change } = applyLines(total, lines)
@@ -59,6 +59,8 @@ export async function payOrder(
     gross: priced.gross,
     total,
     ...(priced.discount && { discount: priced.discount }),
+    ...(priced.promo && { promo: priced.promo }),
+    ...(priced.employee && { employee: priced.employee }),
     ...(cart.lines.some((l) => l.comp) && {
       comps: cart.lines.filter((l) => l.comp).map((l) => ({ lineId: l.id, name: l.name, qty: l.qty, value: compValue(l), reason: l.comp!.code, ...(l.comp!.note.trim() && { note: l.comp!.note.trim() }) })),
     }),
@@ -82,9 +84,24 @@ export async function payOrder(
     businessDate: order.businessDate,
     cashierId: userId,
   }))
-  await db.transaction('rw', [db.orders, db.payments, db.outbox, db.discountLog, db.counters, db.queueItems, db.queueEvents, db.items, db.categories, db.approvals, db.users, db.settings], async () => {
+  await db.transaction('rw', [db.orders, db.payments, db.outbox, db.discountLog, db.counters, db.queueItems, db.queueEvents, db.items, db.categories, db.approvals, db.users, db.settings, db.promos, db.promoUses], async () => {
+    const emp = order.employee
+    if (emp) {
+      const who = await db.users.get(emp.employeeId)
+      if (!who?.active) throw new Error('Pick an active staff member for the staff discount')
+      // A cap per person per business day, so one person cannot drain it.
+      const cap = await getSetting('employeeDiscountDailyCapCentavos')
+      const used = (await db.orders.where('businessDate').equals(order.businessDate).filter((o) => o.status === 'paid' && o.employee?.employeeId === emp.employeeId).toArray())
+        .reduce((s, o) => s + (o.employee?.reduction ?? 0), 0)
+      if (used + emp.reduction > cap) throw new Error(`${emp.name} has used ${formatPeso(used)} of the ${formatPeso(cap)} staff discount allowed per day`)
+    }
+    const pr = order.promo
+    if (pr?.code) {
+      const promo = await db.promos.get(pr.promoId)
+      if (promo && promo.maxUses > 0 && (await db.promoUses.where('promoId').equals(promo.id).count()) >= promo.maxUses) throw new Error(`Code ${pr.code} was already used. Remove it to continue.`)
+    }
     // A discount above the cashier's limit needs an unused supervisor approval; checked here so no screen can skip it.
-    const approver = await consumeApproval(userId, 'discount', order.discount?.reduction ?? 0, order.id, approvals.discount)
+    const approver = await consumeApproval(userId, 'discount', order.discount?.reduction ?? order.employee?.reduction ?? 0, order.id, approvals.discount)
     if (approver) order.discountApprovedBy = approver
     // Same for a comp above the cashier's limit. Stock still deducts (3C) and the value is kept as a comp, not a discount.
     const compApprover = await consumeApproval(userId, 'comp', compTotal(cart), order.id, approvals.comp)
@@ -101,6 +118,9 @@ export async function payOrder(
       }
       await db.discountLog.add(row)
       await db.outbox.add({ id: newId(), table: 'discountLog', recordId: row.id, at, synced: 0 })
+    }
+    if (pr) {
+      await db.promoUses.add({ id: newId(), promoId: pr.promoId, promoName: pr.name, ...(pr.code && { code: pr.code }), orderId: order.id, terminalId, businessDate: order.businessDate, at, amount: pr.reduction })
     }
     await db.payments.bulkAdd(payments)
     await db.outbox.bulkAdd([order.id, ...payments.map((p) => p.id)].map((recordId, i) => ({

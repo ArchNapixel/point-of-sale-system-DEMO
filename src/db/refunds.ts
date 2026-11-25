@@ -14,7 +14,9 @@ export async function refundableLines(orderId: string) {
   const refunds = await db.refunds.where('orderId').equals(orderId).toArray()
   return order.lines.map((line) => {
     const d = order.discount?.lines.find((x) => x.lineId === line.id)
-    const net = lineTotal(line) - (d ? d.base - d.pay : 0)
+    // What the customer actually paid for the line: after Senior/PWD, a promo or a staff discount (only one of them applies).
+    const off = (d ? d.base - d.pay : 0) + (order.promo?.lines.find((x) => x.lineId === line.id)?.amount ?? 0) + (order.employee?.lines.find((x) => x.lineId === line.id)?.amount ?? 0)
+    const net = lineTotal(line) - off
     const mine = refunds.flatMap((r) => r.lines).filter((x) => x.lineId === line.id)
     const doneUnits = mine.reduce((s, x) => s + x.units, 0)
     return { line, net, doneUnits, doneAmount: mine.reduce((s, x) => s + x.amount, 0), remainingUnits: line.qty - doneUnits }

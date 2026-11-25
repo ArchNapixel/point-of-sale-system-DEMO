@@ -14,6 +14,8 @@ export const DEFAULT_SETTINGS = {
   supervisorDiscountLimitCentavos: pesos(2000), // above this, the owner approves
   cashierCompLimitCentavos: pesos(50), // a cashier's comp above this needs a supervisor PIN
   supervisorCompLimitCentavos: pesos(1000), // above this, the owner approves
+  employeeDiscountPct: 30, // staff discount, never stacked with Senior/PWD or a promo
+  employeeDiscountDailyCapCentavos: pesos(300), // most one employee can save per business day
   queueMinutesPerItem: 2, // wait estimate at the cashier: minutes per waiting item
   storeName: 'DEMO Café',
   storeTin: '000-000-000-000',
