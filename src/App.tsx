@@ -4,6 +4,8 @@ import { getSetting } from './db/settings'
 import LockScreen from './LockScreen'
 import Clock from './screens/Clock'
 import Inventory from './screens/Inventory'
+import Waste from './screens/Waste'
+import { negativeStock } from './db/stock'
 import { useAuth } from './auth'
 import Login from './Login'
 import Settings from './screens/Settings'
@@ -19,12 +21,13 @@ import Queue from './screens/Queue'
 import Promos from './screens/Promos'
 import Reports from './screens/Reports'
 
-type Tab = 'shift' | 'order' | 'orders' | 'queue' | 'promos' | 'reports' | 'clock' | 'inventory' | 'menu' | 'setup' | 'settings'
+type Tab = 'shift' | 'order' | 'orders' | 'queue' | 'promos' | 'reports' | 'clock' | 'inventory' | 'waste' | 'menu' | 'setup' | 'settings'
 
 export default function App() {
   const { user, ready, locked, lock, logout } = useAuth()
   const [tab, setTab] = useState<Tab>('shift')
   const lockMinutes = useLiveQuery(() => getSetting('autoLockMinutes'), [])
+  const negative = useLiveQuery(() => negativeStock(), [])
 
   // Auto-lock: any touch or key restarts the timer. When it runs out the screen asks for a PIN; the cart is kept.
   useEffect(() => {
@@ -48,6 +51,7 @@ export default function App() {
   if (can(user.role, 'viewQueue')) tabs.push({ id: 'queue', label: 'Queue' })
   if (can(user.role, 'editPrices') || can(user.role, 'markSoldOut')) tabs.push({ id: 'menu', label: 'Menu' })
   if (can(user.role, 'editStock')) tabs.push({ id: 'inventory', label: 'Inventory' })
+  if (can(user.role, 'viewQueue') || can(user.role, 'editStock')) tabs.push({ id: 'waste', label: 'Waste' })
   tabs.push({ id: 'clock', label: 'Clock' })
   if (can(user.role, 'viewReports')) tabs.push({ id: 'reports', label: 'Reports' })
   if (can(user.role, 'editPrices')) tabs.push({ id: 'promos', label: 'Promos' })
@@ -58,6 +62,9 @@ export default function App() {
     <>
       <header className="shell">
         <strong>DEMO POS</strong>
+        {negative && negative.length > 0 && can(user.role, 'editStock') && (
+          <button onClick={() => setTab('inventory')}>⚠ {negative.length} ingredient(s) below zero</button>
+        )}
         <nav>
           {tabs.map((t) => (
             <button key={t.id} aria-current={t.id === current ? 'page' : undefined} onClick={() => setTab(t.id)}>
@@ -79,6 +86,7 @@ export default function App() {
         {current === 'reports' && <Reports />}
         {current === 'clock' && <Clock />}
         {current === 'inventory' && <Inventory />}
+        {current === 'waste' && <Waste />}
         {current === 'menu' && <Menu />}
         {current === 'setup' && <Setup />}
         {current === 'settings' && <Settings />}

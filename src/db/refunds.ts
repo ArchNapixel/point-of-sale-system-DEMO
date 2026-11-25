@@ -6,6 +6,7 @@ import type { PayMethod } from '../lib/payments'
 import { audit } from './audit'
 import { consumeApproval } from './approvals'
 import { getSellContext } from './shifts'
+import { returnVoided } from './stock'
 
 /** Each order line with what the customer paid for it (after any Senior/PWD discount) and how much is still refundable. */
 export async function refundableLines(orderId: string) {
@@ -39,7 +40,7 @@ async function record(kind: 'void' | 'refund', i: Common & { picks?: Record<stri
   checkReason(i.reasonCode, i.reasonNote)
   const ctx = await getSellContext(i.terminalId)
   if (!ctx) throw new Error('Refunds come out of an open shift on this terminal. Open the business day and a shift first.')
-  const refund = await db.transaction('rw', [db.orders, db.refunds, db.queueItems, db.payments, db.approvals, db.users, db.settings, db.outbox], async () => {
+  const refund = await db.transaction('rw', [db.orders, db.refunds, db.queueItems, db.payments, db.approvals, db.users, db.settings, db.outbox, db.stockMoves], async () => {
     const order = await db.orders.get(i.orderId)
     if (!order || order.status !== 'paid') throw new Error('This order is already voided')
     const rows = await refundableLines(i.orderId)
@@ -78,6 +79,7 @@ async function record(kind: 'void' | 'refund', i: Common & { picks?: Record<stri
     await db.outbox.add({ id: newId(), table: 'refunds', recordId: r.id, at: r.at, synced: 0 })
     if (kind === 'void') {
       await db.orders.update(i.orderId, { status: 'void' })
+      await returnVoided(i.orderId, i.userId) // nothing was made: its ingredients go back
       await db.queueItems.where('orderId').equals(i.orderId).modify({ status: 'void' }) // nothing made: tickets disappear from the bar
     }
     return r

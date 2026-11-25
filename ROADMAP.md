@@ -113,9 +113,9 @@ Because there is no seed data, you need screens to enter it.
 - [x] Recipes per variant; modifier deltas (add/remove/replace); takeout-only packaging
 
 ### 3C — Stock ledger and waste
-- [ ] Ledger (sale, receive, waste, transfer, production, count adjustment); negative stock allowed + alert
-- [ ] Waste screen with reason codes
-- [ ] Auto-disable modifiers when an ingredient runs out
+- [x] Ledger (sale, receive, waste, transfer, production, count adjustment); negative stock allowed + alert
+- [x] Waste screen with reason codes
+- [x] Auto-disable modifiers when an ingredient runs out
 
 ### 3D — Purchasing
 - [ ] Suppliers, purchase orders, receiving (short/rejected/no-PO), weighted average cost

@@ -59,7 +59,8 @@ export async function updateModifier(id: string, m: ModifierInput, userId: strin
   }
 }
 
-export const setModifierSoldOut = (id: string, soldOut: boolean) => db.modifiers.update(id, { soldOut })
+// A person's choice wins: it clears the system's own "ran out" flag, so stock coming back will not undo it.
+export const setModifierSoldOut = (id: string, soldOut: boolean) => db.modifiers.update(id, { soldOut, autoSoldOut: false })
 
 /** Archive or restore. Never delete (design rule 3). */
 export async function setModifierActive(table: 'modifierGroups' | 'modifiers', id: string, active: boolean) {

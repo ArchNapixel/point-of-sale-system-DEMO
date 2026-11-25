@@ -1,6 +1,7 @@
 import { db, type DiscountLogEntry, type Order, type Payment } from './db'
 import { consumeApproval } from './approvals'
 import { createQueueItems } from './queue'
+import { alertAfterSale, deductSale, syncModifierAvailability } from './stock'
 import { formatInvoiceNo } from '../lib/invoice'
 import { newId } from '../lib/id'
 import { cartCount, compValue, compTotal, type Cart } from '../lib/cart'
@@ -84,7 +85,8 @@ export async function payOrder(
     businessDate: order.businessDate,
     cashierId: userId,
   }))
-  await db.transaction('rw', [db.orders, db.payments, db.outbox, db.discountLog, db.counters, db.queueItems, db.queueEvents, db.items, db.categories, db.approvals, db.users, db.settings, db.promos, db.promoUses], async () => {
+  let sale: Awaited<ReturnType<typeof deductSale>> | undefined
+  await db.transaction('rw', [db.orders, db.payments, db.outbox, db.discountLog, db.counters, db.queueItems, db.queueEvents, db.items, db.categories, db.approvals, db.users, db.settings, db.promos, db.promoUses, db.stockMoves, db.recipes], async () => {
     const emp = order.employee
     if (emp) {
       const who = await db.users.get(emp.employeeId)
@@ -109,6 +111,7 @@ export async function payOrder(
     order.invoiceNo = formatInvoiceNo(ctx.terminal.invoicePrefix, await nextInvoiceSeq(terminalId))
     await db.orders.add(order)
     await createQueueItems(order, userId)
+    sale = await deductSale(order, userId) // stock goes down in the same save as the order; it may go negative, never blocks
     const d = order.discount
     if (d) {
       const repeatId = (await db.discountLog.where('idNumber').equals(d.idNumber).and((r) => r.businessDate === order.businessDate).count()) > 0
@@ -133,6 +136,8 @@ export async function payOrder(
     ref: order.id,
     detail: { number: order.number, total, change, payments: payments.map((p) => ({ method: p.method, amount: p.amount, reference: p.reference, status: p.status })) },
   })
+  if (sale) await alertAfterSale(sale.crossed, userId)
+  await syncModifierAvailability(userId).catch(() => {}) // best effort: a stock hiccup must never fail a paid sale
   if (order.discount) {
     const d = order.discount
     await audit({ userId, action: 'discount.statutory', ref: order.id, detail: { kind: d.kind, name: d.name, idNumber: d.idNumber, reduction: d.reduction } })

@@ -2,6 +2,7 @@ import { db, type Order, type QueueEvent, type QueueItem } from './db'
 import { businessDate } from './businessDate'
 import { getSetting } from './settings'
 import { checkReason } from '../lib/reasons'
+import { deductRemake } from './stock'
 import { can } from '../lib/roles'
 import { newId } from '../lib/id'
 import { FLOW, UNDO_MS, type QueueStatus } from '../lib/queue'
@@ -73,7 +74,7 @@ export async function remakeItem(itemId: string, userId: string, reasonCode: str
   if (!user || !can(user.role, 'remake')) throw new Error('Your role cannot remake drinks. Ask a barista or supervisor.')
   const now = new Date()
   const date = businessDate(now, await getSetting('dayCutoffHour'))
-  return db.transaction('rw', db.queueItems, db.queueEvents, db.remakes, async () => {
+  return db.transaction('rw', [db.queueItems, db.queueEvents, db.remakes, db.orders, db.stockMoves, db.recipes, db.settings], async () => {
     const old = await db.queueItems.get(itemId)
     if (!old) throw new Error('Ticket not found')
     if (old.status === 'void') throw new Error('That ticket was already replaced or cancelled')
@@ -90,6 +91,8 @@ export async function remakeItem(itemId: string, userId: string, reasonCode: str
       id: newId(), itemId: old.id, newItemId: copy.id, orderId: old.orderId, name: old.name, station: old.station, qty: old.qty,
       reasonCode, ...(reasonNote?.trim() && { reasonNote: reasonNote.trim() }), userId, businessDate: date, at: now.toISOString(),
     })
+    const order = await db.orders.get(old.orderId)
+    if (order) await deductRemake(order, old.lineId, userId) // the second cup uses ingredients again
     return copy
   })
 }

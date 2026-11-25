@@ -9,6 +9,7 @@ import type { Promo } from '../lib/promos'
 import type { Report } from '../lib/reports'
 import type { BaseUnit, IngredientUnit } from '../lib/units'
 import type { RecipeLine } from '../lib/recipes'
+import type { StockKind } from '../lib/stock'
 
 // Every row has a device-made UUID id. Archive via `active: false`, never delete (rule 3).
 export type Branch = { id: string; name: string; active: boolean }
@@ -47,6 +48,7 @@ export type Modifier = {
   freeQty: number // first N units are free (1 syrup pump free, then paid)
   maxQty: number // most units of this option per drink (pumps)
   soldOut: boolean
+  autoSoldOut?: boolean // switched off by the system because an ingredient ran out (switched back on when stock returns)
   sort: number
   active: boolean
 }
@@ -195,6 +197,22 @@ export type TimeEntry = {
 export type Ingredient = { id: string; name: string; baseUnit: BaseUnit; units: IngredientUnit[]; active: boolean }
 // One version of a recipe. Saving makes a new version; old ones stay so old sales keep what they used (rule 6).
 export type Recipe = { id: string; kind: 'variant' | 'modifier'; refId: string; version: number; lines: RecipeLine[]; at: string; by: string }
+// One line of the stock ledger. qty is signed, in the ingredient's base unit: + in, - out. Never edited or deleted (rule 3).
+export type StockMove = {
+  id: string
+  ingredientId: string
+  branchId: string
+  kind: StockKind
+  qty: number
+  at: string
+  businessDate: string
+  userId: string
+  ref?: string // the order a sale/void/remake belongs to
+  reason?: string // waste reason code
+  note?: string
+  pairId?: string // links a transfer's two sides, or a production's inputs and output
+  recipeVersions?: string[] // the recipe versions a sale used, so old sales keep their cost
+}
 export type InvoicePrint = { id: string; orderId: string; userId: string; at: string; kind: 'original' | 'reprint'; approvedBy?: string }
 export type Payment = {
   id: string
@@ -300,6 +318,7 @@ export const db = new Dexie('demo-pos') as Dexie & {
   timeEntries: EntityTable<TimeEntry, 'id'>
   ingredients: EntityTable<Ingredient, 'id'>
   recipes: EntityTable<Recipe, 'id'>
+  stockMoves: EntityTable<StockMove, 'id'>
   promoUses: EntityTable<PromoUse, 'id'>
   cashMovements: EntityTable<CashMovement, 'id'>
   remakes: EntityTable<Remake, 'id'>
@@ -380,4 +399,7 @@ db.version(18).stores({
 })
 db.version(19).stores({
   recipes: 'id, refId, [kind+refId]',
+})
+db.version(20).stores({
+  stockMoves: 'id, ingredientId, ref, businessDate, [ingredientId+branchId]',
 })
