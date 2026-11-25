@@ -2,8 +2,9 @@ import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from './db/db'
 import {
-  createCategory, createItem, createVariant, getSellableMenu, setMenuActive, setSoldOut, updateVariant, variantLabel,
+  createCategory, createItem, createMenuItem, createVariant, getSellableMenu, setMenuActive, setSoldOut, updateVariant, variantLabel,
 } from './db/menu'
+import { createGroup } from './db/modifiers'
 import { parsePesos, pesos } from './lib/money'
 
 beforeEach(() => Promise.all(db.tables.map((t) => t.clear())))
@@ -46,6 +47,29 @@ describe('menu', () => {
     const log = (await db.auditLog.toArray()).filter((a) => a.action === 'variant.price')
     expect(log).toHaveLength(1)
     expect(log[0].detail).toEqual({ from: 14000, to: 15000 })
+  })
+  it('createMenuItem makes category, item, prices and add-ons in one go', async () => {
+    const g = await createGroup({ name: 'Milk', min: 1, max: 1 })
+    const item = await createMenuItem(
+      { newCategory: 'Espresso', name: 'Latte', variants: [{ size: '12 oz', price: 12000 }, { size: '16 oz', price: 14000 }], groupIds: [g.id] },
+      'u',
+    )
+    expect(await db.categories.count()).toBe(1)
+    expect(await db.variants.where('itemId').equals(item.id).count()).toBe(2)
+    expect((await db.items.get(item.id))?.groupIds).toEqual([g.id])
+    // into an existing category
+    const cat = (await db.categories.toArray())[0]
+    await createMenuItem({ categoryId: cat.id, name: 'Mocha', variants: [{ price: 15000 }], groupIds: [] }, 'u')
+    expect(await db.items.count()).toBe(2)
+  })
+  it('createMenuItem saves nothing when any part is invalid', async () => {
+    const dup = [{ size: '12 oz', price: 12000 }, { size: '12 oz', price: 13000 }]
+    await expect(createMenuItem({ newCategory: 'Tea', name: 'Chai', variants: dup, groupIds: [] }, 'u')).rejects.toThrow(/already exists/)
+    await expect(createMenuItem({ newCategory: 'Tea', name: 'Chai', variants: [], groupIds: [] }, 'u')).rejects.toThrow(/at least one price/)
+    await expect(createMenuItem({ name: 'Chai', variants: [{ price: 1 }], groupIds: [] }, 'u')).rejects.toThrow(/Pick a category/)
+    expect(await db.categories.count()).toBe(0)
+    expect(await db.items.count()).toBe(0)
+    expect(await db.variants.count()).toBe(0)
   })
   it('sellable menu hides archived and empty things but keeps sold-out items', async () => {
     const espresso = await createCategory('Espresso')

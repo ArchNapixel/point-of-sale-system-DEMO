@@ -1,6 +1,7 @@
 import { db, type Category, type Item, type Variant } from './db'
 import { newId } from '../lib/id'
 import { audit } from './audit'
+import { setItemGroup } from './modifiers'
 
 export const variantLabel = (v: Pick<Variant, 'size' | 'temp'>): string =>
   [v.size, v.temp === 'hot' ? 'Hot' : v.temp === 'iced' ? 'Iced' : ''].filter(Boolean).join(' · ') || 'Regular'
@@ -72,6 +73,25 @@ export async function updateVariant(id: string, v: VariantInput, userId: string)
   await assertUnique(old.itemId, v, id)
   await db.variants.update(id, { size: v.size?.trim() || undefined, temp: v.temp, price: v.price })
   if (old.price !== v.price) await audit({ userId, action: 'variant.price', ref: id, detail: { from: old.price, to: v.price } })
+}
+
+/**
+ * Creates a whole menu item in one go: category (existing or new), name, one or more prices and its add-on groups.
+ * All or nothing: if any part is invalid, nothing is saved.
+ */
+export async function createMenuItem(
+  input: { categoryId?: string; newCategory?: string; name: string; variants: VariantInput[]; groupIds: string[] },
+  userId: string,
+): Promise<Item> {
+  if (input.variants.length === 0) throw new Error('Add at least one price')
+  return db.transaction('rw', [db.categories, db.items, db.variants, db.modifierGroups, db.auditLog, db.outbox, db.settings], async () => {
+    const categoryId = input.newCategory?.trim() ? (await createCategory(input.newCategory)).id : input.categoryId
+    if (!categoryId) throw new Error('Pick a category')
+    const item = await createItem(categoryId, input.name)
+    for (const v of input.variants) await createVariant(item.id, v, userId)
+    for (const g of input.groupIds) await setItemGroup(item.id, g, true)
+    return item
+  })
 }
 
 /** What the order screen shows: active categories > active items > active variants. Sold-out items stay (greyed out). */

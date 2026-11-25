@@ -2,10 +2,9 @@ import { useState, type FormEvent } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useAuth } from '../auth'
 import { db, type Category, type Item, type ModifierGroup, type Variant } from '../db/db'
-import {
-  createCategory, createItem, createVariant, renameItem, setMenuActive, setSoldOut, updateVariant, variantLabel,
-} from '../db/menu'
+import { createVariant, renameItem, setMenuActive, setSoldOut, updateVariant, variantLabel } from '../db/menu'
 import { setItemGroup } from '../db/modifiers'
+import AddMenuItem from './AddMenuItem'
 import Modifiers from './Modifiers'
 import { can } from '../lib/roles'
 import { formatPeso, parsePesos } from '../lib/money'
@@ -19,20 +18,19 @@ export default function Menu() {
   const items = useLiveQuery(() => db.items.toArray(), [])
   const variants = useLiveQuery(() => db.variants.toArray(), [])
   const groups = useLiveQuery(() => db.modifierGroups.toArray(), [])
-  const [name, setName] = useState('')
-  const { error, run } = useAction()
+  const [adding, setAdding] = useState(false)
   if (!user || !categories || !items || !variants || !groups) return null
   const canEdit = can(user.role, 'editPrices')
 
-  const add = async (e: FormEvent) => {
-    e.preventDefault()
-    if (await run(() => createCategory(name))) setName('')
-  }
-
   return (
     <>
-      <h2>Menu</h2>
+      <div className="row between">
+        <h2>Menu</h2>
+        {canEdit && !adding && <button className="primary" onClick={() => setAdding(true)}>Add menu item</button>}
+      </div>
+      {adding && <AddMenuItem userId={user.id} onDone={() => setAdding(false)} />}
       {!canEdit && <p>Tap an item to mark it sold out or available again.</p>}
+      {canEdit && categories.length === 0 && !adding && <p>Your menu is empty. Tap "Add menu item" to start.</p>}
       {[...categories].sort((a, b) => a.sort - b.sort).map((c) => (
         <CategoryCard
           key={c.id}
@@ -44,13 +42,6 @@ export default function Menu() {
           userId={user.id}
         />
       ))}
-      {canEdit && (
-        <form onSubmit={add} className="row">
-          <input aria-label="Category name" placeholder="New category (Espresso, Tea…)" value={name} onChange={(e) => setName(e.target.value)} />
-          <button disabled={!name.trim()}>Add category</button>
-          <Err msg={error} />
-        </form>
-      )}
       {categories.length === 0 && !canEdit && <p>The owner hasn't added a menu yet.</p>}
       <Modifiers />
     </>
@@ -60,12 +51,6 @@ export default function Menu() {
 function CategoryCard({ category, items, variants, groups, canEdit, userId }: {
   category: Category; items: Item[]; variants: Variant[]; groups: ModifierGroup[]; canEdit: boolean; userId: string
 }) {
-  const [name, setName] = useState('')
-  const { error, run } = useAction()
-  const add = async (e: FormEvent) => {
-    e.preventDefault()
-    if (await run(() => createItem(category.id, name))) setName('')
-  }
   return (
     <section className={`card ${category.active ? '' : 'archived-card'}`}>
       <h3>
@@ -79,13 +64,6 @@ function CategoryCard({ category, items, variants, groups, canEdit, userId }: {
       {items.map((i) => (
         <ItemRow key={i.id} item={i} variants={variants.filter((v) => v.itemId === i.id).sort((a, b) => a.price - b.price)} groups={groups} canEdit={canEdit} userId={userId} />
       ))}
-      {canEdit && (
-        <form onSubmit={add} className="row">
-          <input aria-label={`New item in ${category.name}`} placeholder="New item" value={name} onChange={(e) => setName(e.target.value)} />
-          <button disabled={!name.trim()}>Add item</button>
-          <Err msg={error} />
-        </form>
-      )}
     </section>
   )
 }
