@@ -1,6 +1,7 @@
 import Dexie, { type EntityTable } from 'dexie'
 import type { Role } from '../lib/roles'
 import type { Cart } from '../lib/cart'
+import type { QueueStatus, Station } from '../lib/queue'
 import type { PayMethod } from '../lib/payments'
 import type { OrderDiscount } from '../lib/discount'
 
@@ -19,7 +20,8 @@ export type AuditEntry = {
   ref?: string
   detail?: Record<string, unknown>
 }
-export type Category = { id: string; name: string; sort: number; active: boolean }
+// station: where items in this category are made. Missing = bar. ponytail: per category; add a per-item override when a mixed category needs it.
+export type Category = { id: string; name: string; sort: number; active: boolean; station?: Station }
 // ponytail: sold-out is one flag per item. Per-branch / per-channel sold-out comes with delivery channels (4B).
 export type Item = {
   id: string
@@ -95,6 +97,31 @@ export type DiscountLogEntry = {
   reduction: number
   repeatId: boolean
 }
+// One bar/kitchen ticket row per order line, created when the order is paid. Names and options are copied (rule 2).
+// ponytail: queue rows are local to this browser; sharing the queue between terminals comes with sync (4x).
+export type QueueItem = {
+  id: string
+  orderId: string
+  orderNumber: number
+  orderLabel: string // customer name or table
+  orderType: string
+  lineId: string
+  station: Exclude<Station, 'none'>
+  name: string
+  variantLabel: string
+  mods: string[]
+  notes: string[]
+  allergy: string
+  qty: number
+  status: QueueStatus
+  statusAt: string
+  prevStatus?: QueueStatus // set only while an undo is possible
+  rush: boolean
+  rushReason?: string
+  createdAt: string
+}
+// Status changes are events: who, when (rule 6).
+export type QueueEvent = { id: string; itemId: string; status: QueueStatus; userId: string; at: string; note?: string }
 export type InvoicePrint = { id: string; orderId: string; userId: string; at: string; kind: 'original' | 'reprint' }
 export type Payment = {
   id: string
@@ -173,6 +200,8 @@ export const db = new Dexie('demo-pos') as Dexie & {
   payments: EntityTable<Payment, 'id'>
   discountLog: EntityTable<DiscountLogEntry, 'id'>
   invoicePrints: EntityTable<InvoicePrint, 'id'>
+  queueItems: EntityTable<QueueItem, 'id'>
+  queueEvents: EntityTable<QueueEvent, 'id'>
 }
 
 db.version(1).stores({
@@ -214,4 +243,8 @@ db.version(8).stores({
 db.version(9).stores({
   orders: 'id, businessDayId, businessDate, paidAt, invoiceNo',
   invoicePrints: 'id, orderId',
+})
+db.version(10).stores({
+  queueItems: 'id, orderId, status, station',
+  queueEvents: 'id, itemId',
 })

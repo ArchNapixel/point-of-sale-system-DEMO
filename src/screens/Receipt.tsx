@@ -36,7 +36,7 @@ export default function Receipt({ orderId, onClose }: { orderId: string; onClose
   const change = payments.reduce((s, p) => s + p.tendered - p.amount, 0)
   return (
     <div className="card">
-      <div className="receipt">
+      <div className="receipt print-area">
         {prints > 0 && <div className="reprint">REPRINT</div>}
         <div className="center"><strong>{store.name}</strong><br />TIN {store.tin}<br />{store.address}</div>
         <div className="center"><strong>SALES INVOICE</strong></div>

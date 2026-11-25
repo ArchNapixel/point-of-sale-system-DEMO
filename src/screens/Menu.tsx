@@ -2,7 +2,8 @@ import { useState, type FormEvent } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useAuth } from '../auth'
 import { db, type Category, type Item, type ModifierGroup, type Variant } from '../db/db'
-import { createVariant, renameItem, setMenuActive, setSoldOut, updateVariant, variantLabel } from '../db/menu'
+import { createVariant, renameItem, setCategoryStation, setMenuActive, setSoldOut, updateVariant, variantLabel } from '../db/menu'
+import { STATIONS, type Station } from '../lib/queue'
 import { setItemGroup } from '../db/modifiers'
 import AddMenuItem from './AddMenuItem'
 import Modifiers from './Modifiers'
@@ -55,6 +56,11 @@ function CategoryCard({ category, items, variants, groups, canEdit, userId }: {
     <section className={`card ${category.active ? '' : 'archived-card'}`}>
       <h3>
         {category.name}{' '}
+        {canEdit && (
+          <select aria-label={`${category.name} is prepared at`} value={category.station ?? 'bar'} onChange={(e) => setCategoryStation(category.id, e.target.value as Station)}>
+            {STATIONS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+          </select>
+        )}{' '}
         {canEdit && (
           <button onClick={() => setMenuActive('categories', category.id, !category.active)}>
             {category.active ? 'Archive' : 'Restore'}

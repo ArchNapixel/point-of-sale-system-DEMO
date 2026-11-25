@@ -72,6 +72,9 @@ button.allergy[aria-pressed='true'] { background: #b00020; }
 .receipt hr { border: 0; border-top: 1px dashed currentColor; }
 @media print {
   body * { visibility: hidden; }
-  .receipt, .receipt * { visibility: visible; }
-  .receipt { position: absolute; left: 0; top: 0; max-width: none; width: 72mm; }
+  .print-area, .print-area * { visibility: visible; }
+  .print-area { position: absolute; left: 0; top: 0; max-width: none; width: 72mm; }
+  .label { width: 50mm; border: 0; page-break-after: always; }
 }
+
+.label { border: 1px solid; padding: 0.4rem; margin-bottom: 0.4rem; max-width: 14rem; }

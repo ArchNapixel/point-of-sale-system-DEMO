@@ -1,5 +1,6 @@
 import { db, type Category, type Item, type Variant } from './db'
 import { newId } from '../lib/id'
+import type { Station } from '../lib/queue'
 import { audit } from './audit'
 import { setItemGroup } from './modifiers'
 
@@ -33,6 +34,8 @@ export async function renameItem(id: string, name: string) {
   if (!name.trim()) throw new Error('Item name is required')
   await db.items.update(id, { name: name.trim() })
 }
+
+export const setCategoryStation = (id: string, station: Station) => db.categories.update(id, { station })
 
 export const setSoldOut = (itemId: string, soldOut: boolean) => db.items.update(itemId, { soldOut })
 

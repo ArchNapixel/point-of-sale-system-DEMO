@@ -10,6 +10,7 @@ export const DEFAULT_SETTINGS = {
   smallWaiveCapCentavos: pesos(5),
   cashDropLimitCentavos: pesos(10000),
   platformCommissionPct: 20,
+  queueMinutesPerItem: 2, // wait estimate at the cashier: minutes per waiting item
   storeName: 'DEMO Café',
   storeTin: '000-000-000-000',
   storeAddress: 'Set the address in Settings',

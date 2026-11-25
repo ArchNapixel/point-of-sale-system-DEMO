@@ -9,6 +9,7 @@ const FIELDS: { key: SettingKey; label: string; kind: 'bool' | 'pesos' | 'int' |
   { key: 'overShortToleranceCentavos', label: 'Over/short tolerance (₱)', kind: 'pesos' },
   { key: 'smallWaiveCapCentavos', label: 'Small waive cap (₱)', kind: 'pesos' },
   { key: 'cashDropLimitCentavos', label: 'Cash drop limit (₱)', kind: 'pesos' },
+  { key: 'queueMinutesPerItem', label: 'Wait estimate: minutes per queued item', kind: 'int', min: 1, max: 60 },
   { key: 'storeName', label: 'Store name (on invoices)', kind: 'text' },
   { key: 'storeTin', label: 'Store TIN', kind: 'text' },
   { key: 'storeAddress', label: 'Store address', kind: 'text' },

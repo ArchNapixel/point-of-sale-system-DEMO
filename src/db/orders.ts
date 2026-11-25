@@ -1,4 +1,5 @@
 import { db, type DiscountLogEntry, type Order, type Payment } from './db'
+import { createQueueItems } from './queue'
 import { formatInvoiceNo } from '../lib/invoice'
 import { newId } from '../lib/id'
 import { cartCount, type Cart } from '../lib/cart'
@@ -74,9 +75,10 @@ export async function payOrder(
     businessDate: order.businessDate,
     cashierId: userId,
   }))
-  await db.transaction('rw', db.orders, db.payments, db.outbox, db.discountLog, db.counters, async () => {
+  await db.transaction('rw', [db.orders, db.payments, db.outbox, db.discountLog, db.counters, db.queueItems, db.queueEvents, db.items, db.categories], async () => {
     order.invoiceNo = formatInvoiceNo(ctx.terminal.invoicePrefix, await nextInvoiceSeq(terminalId))
     await db.orders.add(order)
+    await createQueueItems(order, userId)
     const d = order.discount
     if (d) {
       const repeatId = (await db.discountLog.where('idNumber').equals(d.idNumber).and((r) => r.businessDate === order.businessDate).count()) > 0

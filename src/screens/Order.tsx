@@ -8,6 +8,7 @@ import { discardHeld, holdCart, listHeld, resumeHeld } from '../db/carts'
 import { DEVICE_KEY, resolveTerminal } from '../db/device'
 import { payOrder } from '../db/orders'
 import { getSetting } from '../db/settings'
+import { waitEstimate } from '../lib/queue'
 import { priceCart, validateStatutory, type StatutoryInput } from '../lib/discount'
 import { PAY_METHODS, applyLines, type PayLine, type PayMethod } from '../lib/payments'
 import { parsePesos, pesos } from '../lib/money'
@@ -186,6 +187,8 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
   const [showInvoice, setShowInvoice] = useState(false)
   const [discounting, setDiscounting] = useState(false)
   const vat = useLiveQuery(() => getSetting('vatRegistered'), [])
+  const open = useLiveQuery(() => db.queueItems.where('status').anyOf('queued', 'making').toArray(), [])
+  const perItem = useLiveQuery(() => getSetting('queueMinutesPerItem'), [])
   const [done, setDone] = useState<{ orderId: string; number: number; change: number; pending: boolean } | null>(null)
   const menu = useLiveQuery(getSellableMenu, [])
   const held = useLiveQuery(() => listHeld(terminalId), [terminalId])
@@ -195,7 +198,9 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
     localStorage.setItem(cartKey(terminalId), JSON.stringify(cart))
   }, [cart, terminalId])
 
-  if (!menu || !held || vat === undefined) return null
+  if (!menu || !held || vat === undefined || !open || perItem === undefined) return null
+  const bar = waitEstimate(open, 'bar', perItem)
+  const kitchen = waitEstimate(open, 'kitchen', perItem)
   const priced = priceCart(cart, vat)
   const category = menu.find((c) => c.id === catId) ?? menu[0]
 
@@ -284,6 +289,10 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
           <input aria-label="Customer name" placeholder="Customer name (add last initial)" value={cart.name} onChange={(e) => setCart({ ...cart, name: e.target.value })} />
         )}
         <small>The order number is given when the order is paid.</small>
+        <small>
+          Bar: {bar.waiting === 0 ? 'no wait' : `about ${bar.minutes} min`}
+          {kitchen.waiting > 0 && ` · Kitchen: about ${kitchen.minutes} min`}. Tell the customer before they pay.
+        </small>
 
         {cart.lines.length === 0 && <p className="empty">Tap an item to start the order.</p>}
         <ul className="lines">

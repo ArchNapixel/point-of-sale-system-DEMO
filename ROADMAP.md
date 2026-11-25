@@ -65,9 +65,9 @@ Because there is no seed data, you need screens to enter it.
 - [x] Reprint marked REPRINT and logged; search past sales
 
 ### 1J — Bar queue
-- [ ] Tickets split by station, per-item status
-- [ ] Wait estimate at the cashier, rush flag
-- [ ] Cup labels; allergy notes in loud style
+- [x] Tickets split by station, per-item status
+- [x] Wait estimate at the cashier, rush flag
+- [x] Cup labels; allergy notes in loud style
 
 ### 1K — Shift close
 - [ ] Blind drawer count by denomination
