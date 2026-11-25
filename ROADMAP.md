@@ -17,7 +17,8 @@ Because there is no seed data, you need screens to enter it.
 - [ ] App shell and navigation (tablet-friendly)
 - [ ] Add/edit branch, terminal (with invoice prefix like `T1`) and users with a role and PIN
 - [ ] Settings screen (VAT on/off, float, tolerance, cutoff hour)
-- [ ] PIN sign-in and sign-out; the screens a role can't use are hidden
+- [x] PIN sign-in and sign-out (first run creates the owner)
+- [ ] Hide screens a role can't use (once screens exist)
 
 ### 1B — Business day and shift open
 - [ ] Open the business day for the branch (supervisor)
