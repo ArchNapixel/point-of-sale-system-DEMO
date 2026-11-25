@@ -71,22 +71,29 @@ export default function App() {
   return (
     <>
       <header className="shell">
-        <strong>DEMO POS</strong>
-        {negative && negative.length > 0 && can(user.role, 'editStock') && (
-          <button onClick={() => setTab('inventory')}>⚠ {negative.length} ingredient(s) below zero</button>
-        )}
-        <nav>
+        <div className="topbar">
+          <strong className="brand">DEMO POS</strong>
+          {negative && negative.length > 0 && can(user.role, 'editStock') && (
+            <button className="warn" onClick={() => setTab('inventory')}>⚠ {negative.length} ingredient(s) below zero</button>
+          )}
+          <div className="user">
+            <span className="who">
+              <span className="name">{user.name}</span>
+              <span className="role">{user.role}</span>
+            </span>
+            <button onClick={lock}>Switch user</button>
+            <button onClick={logout}>Sign out</button>
+          </div>
+        </div>
+        <nav aria-label="Main">
           {tabs.map((t) => (
             <button key={t.id} aria-current={t.id === current ? 'page' : undefined} onClick={() => setTab(t.id)}>
               {t.label}
             </button>
           ))}
         </nav>
-        <span>
-          {user.name} <small>({user.role})</small> <button onClick={lock}>Switch user</button> <button onClick={logout}>Sign out</button>
-        </span>
       </header>
-      <main>
+      <main className={current === 'order' || current === 'training' ? 'wide' : undefined}>
         {!current && <p>Nothing here for your role yet.</p>}
         {current === 'shift' && <Shift />}
         {current === 'order' && <Order />}

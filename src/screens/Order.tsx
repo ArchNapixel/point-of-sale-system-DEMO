@@ -442,8 +442,10 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
             const hi = Math.max(...prices)
             return (
               <button key={i.id} className="item-btn" disabled={i.soldOut} onClick={() => tapItem(i)}>
-                <strong>{i.name}</strong>
-                <small>{i.soldOut ? 'SOLD OUT' : lo === hi ? formatPeso(lo) : `${formatPeso(lo)}–${formatPeso(hi)}`}</small>
+                {/* ponytail: letter placeholder; swap for <img> once items carry an image */}
+                <span className="thumb" aria-hidden="true">{i.name.trim()[0]?.toUpperCase()}</span>
+                <span className="item-name">{i.name}</span>
+                <span className="item-price">{i.soldOut ? 'Sold out' : lo === hi ? formatPeso(lo) : `${formatPeso(lo)}–${formatPeso(hi)}`}</span>
               </button>
             )
           })}
