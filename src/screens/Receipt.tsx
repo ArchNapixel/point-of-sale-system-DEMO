@@ -3,11 +3,12 @@ import { useAuth } from '../auth'
 import { db } from '../db/db'
 import { getSetting } from '../db/settings'
 import { logPrint } from '../db/orders'
-import { needsApproval } from '../lib/approval'
+import { NO_LIMITS, needsApproval } from '../lib/approval'
 import { useState } from 'react'
 import ApprovalPrompt from './ApprovalPrompt'
 import { invoiceFigures } from '../lib/invoice'
 import { lineTotal } from '../lib/cart'
+import { REASONS } from '../lib/reasons'
 import { PAY_METHODS } from '../lib/payments'
 import { DEMO_FOOTER } from '../lib/receipt'
 import { formatPeso } from '../lib/money'
@@ -31,16 +32,19 @@ export default function Receipt({ orderId, onClose }: { orderId: string; onClose
       db.invoicePrints.where('orderId').equals(orderId).count(),
     ])
     const store = { name: await getSetting('storeName'), tin: await getSetting('storeTin'), address: await getSetting('storeAddress') }
-    return { order, payments, cashier, prints, store }
+    const v = order.status === 'void' ? await db.refunds.where('orderId').equals(orderId).first() : undefined
+    const voided = v && { reasonLabel: REASONS.find((r) => r.id === v.reasonCode)?.label ?? v.reasonCode, approver: (await db.users.get(v.approvedBy))?.name ?? '' }
+    return { order, payments, cashier, prints, store, voided }
   }, [orderId])
   if (!data || !user) return null
-  const { order: o, payments, cashier, prints, store } = data
+  const { order: o, payments, cashier, prints, store, voided } = data
   const f = invoiceFigures(o)
   const d = o.discount
   const change = payments.reduce((s, p) => s + p.tendered - p.amount, 0)
   return (
     <div className="card">
       <div className="receipt print-area">
+        {o.status === 'void' && <div className="reprint">VOID{voided ? `: ${voided.reasonLabel} (approved by ${voided.approver})` : ''}</div>}
         {prints > 0 && <div className="reprint">REPRINT</div>}
         <div className="center"><strong>{store.name}</strong><br />TIN {store.tin}<br />{store.address}</div>
         <div className="center"><strong>SALES INVOICE</strong></div>
@@ -52,7 +56,7 @@ export default function Receipt({ orderId, onClose }: { orderId: string; onClose
         <hr />
         {o.lines.map((l) => (
           <div key={l.id}>
-            <R l={`${l.qty}× ${l.name} ${l.variantLabel}`} r={formatPeso(lineTotal(l))} />
+            <R l={`${l.qty}× ${l.name} ${l.variantLabel}`} r={l.comp ? 'COMP' : formatPeso(lineTotal(l))} />
             {l.mods.length > 0 && <small>&nbsp;&nbsp;{l.mods.map((m) => `${m.name}${m.qty > 1 ? ` ×${m.qty}` : ''}`).join(', ')}</small>}
           </div>
         ))}
@@ -101,7 +105,7 @@ export default function Receipt({ orderId, onClose }: { orderId: string; onClose
       )}
       <div className="row">
         <button onClick={onClose}>Close</button>
-        <button className="primary" onClick={() => (prints > 0 && needsApproval(user.role, 'reprint', 0, { discountCashier: 0, discountSupervisor: 0 }) ? setAsking(true) : run(async () => { await logPrint(o.id, user.id); window.print() }))}>
+        <button className="primary" onClick={() => (prints > 0 && needsApproval(user.role, 'reprint', 0, NO_LIMITS) ? setAsking(true) : run(async () => { await logPrint(o.id, user.id); window.print() }))}>
           {prints > 0 ? 'Reprint' : 'Print'}
         </button>
       </div>

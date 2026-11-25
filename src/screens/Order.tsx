@@ -13,7 +13,7 @@ import { priceCart, validateStatutory, type StatutoryInput } from '../lib/discou
 import { PAY_METHODS, applyLines, type PayLine, type PayMethod } from '../lib/payments'
 import { parsePesos, pesos } from '../lib/money'
 import {
-  ORDER_TYPES, addLine, buildLine, cartCount, cartTotal, changeQty, duplicateLine, emptyCart, lineTotal, removeLine, replaceLine,
+  ORDER_TYPES, addLine, buildLine, cartCount, cartTotal, compTotal, compValue, changeQty, duplicateLine, emptyCart, lineTotal, removeLine, replaceLine,
   type Cart, type CartLine, type OrderType,
 } from '../lib/cart'
 import { quote } from '../lib/modifierPricing'
@@ -26,6 +26,9 @@ import Receipt from './Receipt'
 import ApprovalPrompt from './ApprovalPrompt'
 import { getLimits } from '../db/approvals'
 import { needsApproval } from '../lib/approval'
+import { audit } from '../db/audit'
+import ReasonFields, { NO_REASON, type Reason } from './ReasonFields'
+import { checkReason } from '../lib/reasons'
 
 type MenuItem = Awaited<ReturnType<typeof getSellableMenu>>[number]['items'][number]
 
@@ -156,7 +159,7 @@ function DiscountPanel({ cart, vat, onApply, onCancel }: { cart: Cart; vat: bool
       <input aria-label="ID holder name" placeholder="ID holder name" value={d.name} onChange={(e) => setD({ ...d, name: e.target.value })} />
       <input aria-label="ID number" placeholder="ID number" value={d.idNumber} onChange={(e) => setD({ ...d, idNumber: e.target.value })} />
       <small>Tick only the items the ID holder will consume.</small>
-      {cart.lines.map((l) => (
+      {cart.lines.filter((l) => !l.comp).map((l) => (
         <div key={l.id} className="row between">
           <label>
             <input type="checkbox" checked={!!d.picks[l.id]} onChange={(e) => pick(l, e.target.checked ? l.qty : 0)} /> {l.name} <small>{l.variantLabel}</small>
@@ -187,8 +190,11 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
   const [picking, setPicking] = useState<{ item: MenuItem; initial?: CartLine } | null>(null)
   const [catId, setCatId] = useState('')
   const [paying, setPaying] = useState(false)
-  const [asking, setAsking] = useState(false)
+  const [asking, setAsking] = useState<'discount' | 'comp' | null>(null)
   const [approval, setApproval] = useState<{ id: string; amount: number } | null>(null) // supervisor approval for a big discount
+  const [compApproval, setCompApproval] = useState<{ id: string; amount: number } | null>(null) // ... and for a big comp
+  const [comping, setComping] = useState('') // line id being comped
+  const [reason, setReason] = useState<Reason>(NO_REASON)
   const limits = useLiveQuery(getLimits, [])
   const [showInvoice, setShowInvoice] = useState(false)
   const [discounting, setDiscounting] = useState(false)
@@ -209,7 +215,11 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
   const kitchen = waitEstimate(open, 'kitchen', perItem)
   const priced = priceCart(cart, vat)
   const reduction = priced.discount?.reduction ?? 0
-  const mustAsk = needsApproval(user.role, 'discount', reduction, limits) && !(approval && approval.amount >= reduction)
+  const comped = compTotal(cart)
+  const askDiscount = needsApproval(user.role, 'discount', reduction, limits) && !(approval && approval.amount >= reduction)
+  const askComp = needsApproval(user.role, 'comp', comped, limits) && !(compApproval && compApproval.amount >= comped)
+  // Ask for whichever approval is missing, then open payment.
+  const proceed = (d = askDiscount, c = askComp) => { setDiscounting(false); if (d) setAsking('discount'); else if (c) setAsking('comp'); else { setAsking(null); setPaying(true) } }
   const category = menu.find((c) => c.id === catId) ?? menu[0]
 
   const commit = (next: Cart) => {
@@ -313,15 +323,23 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
                   {l.notes.length > 0 && <div><small>{l.notes.join(' · ')}</small></div>}
                   {l.allergy && <div className="allergy-note">⚠ ALLERGY: {l.allergy}</div>}
                 </div>
-                <strong>{formatPeso(lineTotal(l))}</strong>
+                <strong>{l.comp ? `COMP (${formatPeso(compValue(l))})` : formatPeso(lineTotal(l))}</strong>
               </div>
+              {comping === l.id && (
+                <div className="row">
+                  <ReasonFields value={reason} onChange={setReason} />
+                  <button onClick={() => run(async () => { checkReason(reason.code, reason.note); commit({ ...cart, lines: cart.lines.map((x) => (x.id === l.id ? { ...x, comp: { code: reason.code, note: reason.note } } : x)) }); setComping('') })}>Give free</button>
+                  <button onClick={() => setComping('')}>Cancel</button>
+                </div>
+              )}
               <div className="row">
                 <button aria-label={`Less ${l.name}`} onClick={() => commit(changeQty(cart, l.id, -1))}>−</button>
                 <span className="qty">{l.qty}</span>
                 <button aria-label={`More ${l.name}`} onClick={() => commit(changeQty(cart, l.id, 1))}>+</button>
                 <button onClick={() => editLine(l)}>Edit</button>
                 <button onClick={() => commit(duplicateLine(cart, l.id, newId()))}>Duplicate</button>
-                <button onClick={() => commit(removeLine(cart, l.id))}>Remove</button>
+                <button onClick={() => { run(() => audit({ userId: user.id, action: 'line.void', detail: { name: l.name, qty: l.qty, amount: lineTotal(l) } })); commit(removeLine(cart, l.id)) }}>Remove</button>
+                <button onClick={() => { if (l.comp) commit({ ...cart, lines: cart.lines.map((x) => (x.id === l.id ? { ...x, comp: undefined } : x)) }); else { setReason(NO_REASON); setComping(l.id) } }}>{l.comp ? 'Undo comp' : 'Comp'}</button>
               </div>
             </li>
           ))}
@@ -342,7 +360,7 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
           <button onClick={() => commit({ ...cart, lines: [] })} disabled={cart.lines.length === 0}>Clear</button>
           <button onClick={hold} disabled={cart.lines.length === 0}>Hold</button>
           <button onClick={() => { setPaying(false); setDiscounting(true) }} disabled={cart.lines.length === 0}>Senior/PWD</button>
-          <button className="primary" onClick={() => { setDiscounting(false); mustAsk ? setAsking(true) : setPaying(true) }} disabled={cart.lines.length === 0}>Take payment</button>
+          <button className="primary" onClick={() => proceed()} disabled={cart.lines.length === 0}>Take payment</button>
         </div>
         <Err msg={error} />
         {discounting && (
@@ -350,12 +368,15 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
         )}
         {asking && (
           <ApprovalPrompt
-            action="discount"
-            amount={reduction}
+            action={asking}
+            amount={asking === 'discount' ? reduction : comped}
             requesterId={user.id}
-            title={`Discount of ₱${(reduction / 100).toFixed(2)} is above your limit. Supervisor PIN needed.`}
-            onCancel={() => setAsking(false)}
-            onApproved={(a) => { setApproval({ id: a.id, amount: a.amount }); setAsking(false); setPaying(true) }}
+            title={`${asking === 'discount' ? 'Discount' : 'Comp'} of ${formatPeso(asking === 'discount' ? reduction : comped)} is above your limit. Supervisor PIN needed.`}
+            onCancel={() => setAsking(null)}
+            onApproved={(a) => {
+              const got = { id: a.id, amount: a.amount }
+              if (asking === 'discount') { setApproval(got); proceed(false, askComp) } else { setCompApproval(got); proceed(askDiscount, false) }
+            }}
           />
         )}
         {paying && (
@@ -363,10 +384,11 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
             total={priced.total}
             onCancel={() => setPaying(false)}
             onPay={async (lines, key, buyer) => {
-              const { order, payments, change } = await payOrder(terminalId, user.id, cart, lines, key, buyer, mustAsk ? undefined : approval?.id)
+              const { order, payments, change } = await payOrder(terminalId, user.id, cart, lines, key, buyer, { discount: askDiscount ? undefined : approval?.id, comp: askComp ? undefined : compApproval?.id })
               setCart(emptyCart())
               setHistory([])
               setApproval(null)
+              setCompApproval(null)
               setPaying(false)
               setDone({ orderId: order.id, number: order.number, change: change ?? 0, pending: payments.some((p) => p.status === 'pending') })
             }}

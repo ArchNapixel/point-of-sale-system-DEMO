@@ -83,8 +83,8 @@ Because there is no seed data, you need screens to enter it.
 - [x] Self-approval flagged; per-role limits
 
 ### 2B — Voids, refunds, remakes, comps
-- [ ] Line void, order void, refund (partial/later-day/other method), remake, comp
-- [ ] Fixed reason codes plus "Other" with a note
+- [x] Line void, order void, refund (partial/later-day/other method), remake, comp
+- [x] Fixed reason codes plus "Other" with a note
 
 ### 2C — Cash movements
 - [ ] Cash drops, paid-outs, paid-ins, no-sale opens (reason, logged)

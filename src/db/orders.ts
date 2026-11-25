@@ -3,7 +3,8 @@ import { consumeApproval } from './approvals'
 import { createQueueItems } from './queue'
 import { formatInvoiceNo } from '../lib/invoice'
 import { newId } from '../lib/id'
-import { cartCount, type Cart } from '../lib/cart'
+import { cartCount, compValue, compTotal, type Cart } from '../lib/cart'
+import { checkReason } from '../lib/reasons'
 import { applyLines, normRef, type PayLine } from '../lib/payments'
 import { formatPeso } from '../lib/money'
 import { priceCart, validateStatutory } from '../lib/discount'
@@ -18,11 +19,12 @@ import { getSellContext } from './shifts'
  * Calling again with the same idempotency key returns the first result (line i uses `${key}:${i}`).
  */
 export async function payOrder(
-  terminalId: string, userId: string, cart: Cart, lines: PayLine[], idempotencyKey: string, buyer?: { name: string; tin: string }, approvalId?: string,
+  terminalId: string, userId: string, cart: Cart, lines: PayLine[], idempotencyKey: string, buyer?: { name: string; tin: string }, approvals: { discount?: string; comp?: string } = {},
 ) {
-  const prior = await db.payments.where('idempotencyKey').equals(`${idempotencyKey}:0`).first()
-  if (prior) return { order: (await db.orders.get(prior.orderId))!, payments: await db.payments.where('orderId').equals(prior.orderId).toArray() }
+  const prior = await db.orders.where('idempotencyKey').equals(idempotencyKey).first()
+  if (prior) return { order: prior, payments: await db.payments.where('orderId').equals(prior.id).toArray() }
   if (cartCount(cart) === 0) throw new Error('The cart is empty')
+  for (const l of cart.lines) if (l.comp) checkReason(l.comp.code, l.comp.note)
   const vat = await getSetting('vatRegistered')
   const priced = priceCart(cart, vat)
   if (cart.discount) {
@@ -57,6 +59,10 @@ export async function payOrder(
     gross: priced.gross,
     total,
     ...(priced.discount && { discount: priced.discount }),
+    ...(cart.lines.some((l) => l.comp) && {
+      comps: cart.lines.filter((l) => l.comp).map((l) => ({ lineId: l.id, name: l.name, qty: l.qty, value: compValue(l), reason: l.comp!.code, ...(l.comp!.note.trim() && { note: l.comp!.note.trim() }) })),
+    }),
+    idempotencyKey,
     status: 'paid',
     paidAt: at,
     cashierId: userId,
@@ -78,8 +84,11 @@ export async function payOrder(
   }))
   await db.transaction('rw', [db.orders, db.payments, db.outbox, db.discountLog, db.counters, db.queueItems, db.queueEvents, db.items, db.categories, db.approvals, db.users, db.settings], async () => {
     // A discount above the cashier's limit needs an unused supervisor approval; checked here so no screen can skip it.
-    const approver = await consumeApproval(userId, 'discount', order.discount?.reduction ?? 0, order.id, approvalId)
+    const approver = await consumeApproval(userId, 'discount', order.discount?.reduction ?? 0, order.id, approvals.discount)
     if (approver) order.discountApprovedBy = approver
+    // Same for a comp above the cashier's limit. Stock still deducts (3C) and the value is kept as a comp, not a discount.
+    const compApprover = await consumeApproval(userId, 'comp', compTotal(cart), order.id, approvals.comp)
+    if (compApprover) order.compApprovedBy = compApprover
     order.invoiceNo = formatInvoiceNo(ctx.terminal.invoicePrefix, await nextInvoiceSeq(terminalId))
     await db.orders.add(order)
     await createQueueItems(order, userId)

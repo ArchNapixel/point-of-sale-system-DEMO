@@ -139,15 +139,17 @@ export async function lateCloseShift(shiftId: string, supervisorId: string, reas
 }
 
 /**
- * Cash that should be in the drawer: the opening count plus cash taken for sales (the part applied to orders, not the change given back).
- * ponytail: paid-ins, paid-outs, cash drops and cash refunds are not built yet (Phase 2); add them to this sum when they land.
+ * Cash that should be in the drawer: the opening count plus cash taken for sales (the part applied to orders, not the change given back),
+ * minus cash handed back in refunds and voids during this shift (a refund for an old sale comes out of today's drawer).
+ * ponytail: paid-ins, paid-outs and cash drops are not built yet (2C); add them to this sum when they land.
  */
 export async function expectedCash(shiftId: string): Promise<number> {
   const shift = await db.shifts.get(shiftId)
   if (!shift) throw new Error('Shift not found')
   const orderIds = (await db.orders.where('shiftId').equals(shiftId).toArray()).map((o) => o.id)
   const cash = (await db.payments.where('orderId').anyOf(orderIds).toArray()).filter((p) => p.method === 'cash')
-  return shift.openingTotal + cash.reduce((s, p) => s + p.amount, 0)
+  const refunded = (await db.refunds.where('shiftId').equals(shiftId).toArray()).reduce((s, r) => s + r.cashAmount, 0)
+  return shift.openingTotal + cash.reduce((s, p) => s + p.amount, 0) - refunded
 }
 
 /**

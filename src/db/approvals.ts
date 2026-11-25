@@ -9,7 +9,12 @@ import { verifyLogin } from './users'
 const MAX_AGE_MS = 10 * 60_000 // an approval must be used within 10 minutes
 
 export async function getLimits(): Promise<Limits> {
-  return { discountCashier: await getSetting('cashierDiscountLimitCentavos'), discountSupervisor: await getSetting('supervisorDiscountLimitCentavos') }
+  return {
+    discountCashier: await getSetting('cashierDiscountLimitCentavos'),
+    discountSupervisor: await getSetting('supervisorDiscountLimitCentavos'),
+    compCashier: await getSetting('cashierCompLimitCentavos'),
+    compSupervisor: await getSetting('supervisorCompLimitCentavos'),
+  }
 }
 
 /**
@@ -45,7 +50,7 @@ export async function approve(i: {
 export async function consumeApproval(
   actorId: string, action: ApprovalAction, amount: number, usedFor: string, approvalId?: string, ref?: string,
 ): Promise<string | undefined> {
-  if (action === 'discount' && amount === 0) return undefined // no discount on the order
+  if ((action === 'discount' || action === 'comp') && amount === 0) return undefined // nothing to approve on this order
   const actor = await db.users.get(actorId)
   if (!actor) throw new Error('Unknown user')
   if (!needsApproval(actor.role, action, amount, await getLimits())) return undefined

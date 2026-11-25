@@ -4,9 +4,9 @@ export const STATIONS: { id: Station; label: string }[] = [
   { id: 'kitchen', label: 'Kitchen' },
   { id: 'none', label: 'No prep' },
 ]
-export type QueueStatus = 'queued' | 'making' | 'ready' | 'served'
+export type QueueStatus = 'queued' | 'making' | 'ready' | 'served' | 'void' // void: cancelled with its order, or replaced by a remake
 export const FLOW: QueueStatus[] = ['queued', 'making', 'ready', 'served']
-export const STATUS_ACTION: Record<QueueStatus, string> = { queued: '', making: 'Start', ready: 'Ready', served: 'Picked up' }
+export const STATUS_ACTION: Record<QueueStatus, string> = { queued: '', making: 'Start', ready: 'Ready', served: 'Picked up', void: '' }
 export const UNDO_MS = 60_000 // a wrong tap can be undone for a minute
 export const RUSH_REASONS = ['Rider waiting', 'Pre-order due', 'Remake', 'Other']
 
@@ -23,4 +23,7 @@ export const byUrgency = <T extends { rush: boolean; createdAt: string }>(a: T, 
   Number(b.rush) - Number(a.rush) || a.createdAt.localeCompare(b.createdAt)
 
 /** An order is ready only when every one of its items is ready or already picked up. */
-export const orderReady = (items: { status: QueueStatus }[]) => items.length > 0 && items.every((i) => i.status === 'ready' || i.status === 'served')
+export const orderReady = (all: { status: QueueStatus }[]) => {
+  const items = all.filter((i) => i.status !== 'void')
+  return items.length > 0 && items.every((i) => i.status === 'ready' || i.status === 'served')
+}

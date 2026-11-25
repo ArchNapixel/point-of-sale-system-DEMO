@@ -2,6 +2,7 @@ import Dexie, { type EntityTable } from 'dexie'
 import type { Role } from '../lib/roles'
 import type { Cart } from '../lib/cart'
 import type { QueueStatus, Station } from '../lib/queue'
+import type { ApprovalAction } from '../lib/approval'
 import type { PayMethod } from '../lib/payments'
 import type { OrderDiscount } from '../lib/discount'
 
@@ -78,7 +79,10 @@ export type Order = {
   total: number // centavos the customer pays (gross - discount.reduction)
   discount?: OrderDiscount
   discountApprovedBy?: string // set when the discount was above the cashier's limit
-  status: 'paid'
+  comps?: { lineId: string; name: string; qty: number; value: number; reason: string; note?: string }[] // lines given free on purpose; value = what they would have cost
+  compApprovedBy?: string
+  idempotencyKey: string // one tap = one order (also covers ₱0 comped orders, which have no payment rows)
+  status: 'paid' | 'void' // a voided order keeps its invoice number
   paidAt: string
   cashierId: string
 }
@@ -120,13 +124,15 @@ export type QueueItem = {
   rush: boolean
   rushReason?: string
   createdAt: string
+  remakeOf?: string // this ticket replaces a spilled or wrong one
+  wasted?: boolean // made but not sold: stock counts it as waste (3C)
 }
 // Status changes are events: who, when (rule 6).
 export type QueueEvent = { id: string; itemId: string; status: QueueStatus; userId: string; at: string; note?: string }
 // A second person's PIN for a sensitive action: who asked, who approved, on which terminal, when (rule 2).
 export type Approval = {
   id: string
-  action: 'discount' | 'reprint'
+  action: ApprovalAction
   requesterId: string
   approverId: string
   terminalId: string
@@ -136,6 +142,34 @@ export type Approval = {
   ref?: string // e.g. the order id being reprinted
   selfApproved: boolean // requester and approver are the same person: flagged in the approvals report
   usedFor?: string // set once an action has used it; an approval is good for one action
+}
+// Void = whole order, before anything was made. Refund = after it was made or served, whole or partial. Kept apart in every report.
+// Dated the day it is given (not the sale's day) and linked to the original invoice. cashAmount is what left the drawer.
+export type Refund = {
+  id: string
+  orderId: string
+  invoiceNo: string
+  kind: 'void' | 'refund'
+  lines: { lineId: string; units: number; amount: number }[]
+  amount: number
+  method: PayMethod | 'original' // 'original' = a void hands every payment back the way it came
+  cashAmount: number
+  reference?: string
+  reasonCode: string
+  reasonNote?: string
+  requestedBy: string
+  approvedBy: string
+  terminalId: string
+  shiftId: string
+  businessDate: string
+  at: string
+  madeBefore: boolean // something was already made: the drinks are waste, not returned stock
+  idempotencyKey: string
+}
+// A spilled or wrongly made ticket re-made. No money moves; the first cup is waste.
+export type Remake = {
+  id: string; itemId: string; newItemId: string; orderId: string; name: string; station: string; qty: number
+  reasonCode: string; reasonNote?: string; userId: string; businessDate: string; at: string
 }
 export type InvoicePrint = { id: string; orderId: string; userId: string; at: string; kind: 'original' | 'reprint'; approvedBy?: string }
 export type Payment = {
@@ -221,6 +255,8 @@ export const db = new Dexie('demo-pos') as Dexie & {
   discountLog: EntityTable<DiscountLogEntry, 'id'>
   invoicePrints: EntityTable<InvoicePrint, 'id'>
   approvals: EntityTable<Approval, 'id'>
+  refunds: EntityTable<Refund, 'id'>
+  remakes: EntityTable<Remake, 'id'>
   queueItems: EntityTable<QueueItem, 'id'>
   queueEvents: EntityTable<QueueEvent, 'id'>
 }
@@ -274,4 +310,9 @@ db.version(11).stores({
 })
 db.version(12).stores({
   approvals: 'id, requesterId, approverId, businessDate, at',
+})
+db.version(13).stores({
+  refunds: 'id, orderId, businessDate, shiftId, &idempotencyKey',
+  remakes: 'id, itemId, orderId, businessDate',
+  orders: 'id, businessDayId, businessDate, paidAt, invoiceNo, shiftId, &idempotencyKey',
 })

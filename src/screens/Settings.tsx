@@ -11,6 +11,8 @@ const FIELDS: { key: SettingKey; label: string; kind: 'bool' | 'pesos' | 'int' |
   { key: 'cashDropLimitCentavos', label: 'Cash drop limit (₱)', kind: 'pesos' },
   { key: 'cashierDiscountLimitCentavos', label: 'Cashier discount limit (₱, above needs a supervisor)', kind: 'pesos' },
   { key: 'supervisorDiscountLimitCentavos', label: 'Supervisor discount limit (₱, above needs the owner)', kind: 'pesos' },
+  { key: 'cashierCompLimitCentavos', label: 'Cashier comp limit (₱, above needs a supervisor)', kind: 'pesos' },
+  { key: 'supervisorCompLimitCentavos', label: 'Supervisor comp limit (₱, above needs the owner)', kind: 'pesos' },
   { key: 'queueMinutesPerItem', label: 'Wait estimate: minutes per queued item', kind: 'int', min: 1, max: 60 },
   { key: 'storeName', label: 'Store name (on invoices)', kind: 'text' },
   { key: 'storeTin', label: 'Store TIN', kind: 'text' },

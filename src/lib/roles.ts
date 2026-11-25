@@ -4,13 +4,13 @@ export type Role = (typeof ROLES)[number]
 // Permissions from workflow §12. Add keys as features land.
 export type Permission =
   | 'sell' | 'lineVoid' | 'voidPaid' | 'refund' | 'comp' | 'openDay' | 'editStock'
-  | 'editPrices' | 'viewQueue' | 'viewAllBranches' | 'trainingOnly' | 'manageSetup' | 'openShift' | 'markSoldOut' | 'verifyPayment' | 'viewDiscountLog' | 'approve' | 'reprint'
+  | 'editPrices' | 'viewQueue' | 'viewAllBranches' | 'trainingOnly' | 'manageSetup' | 'openShift' | 'markSoldOut' | 'verifyPayment' | 'viewDiscountLog' | 'approve' | 'reprint' | 'remake'
 
 export const PERMISSIONS: Record<Role, readonly Permission[]> = {
-  owner: ['manageSetup', 'openShift', 'markSoldOut', 'sell', 'lineVoid', 'voidPaid', 'refund', 'comp', 'openDay', 'editStock', 'editPrices', 'viewQueue', 'viewAllBranches', 'verifyPayment', 'viewDiscountLog', 'approve', 'reprint'],
-  supervisor: ['openShift', 'markSoldOut', 'sell', 'lineVoid', 'voidPaid', 'refund', 'comp', 'openDay', 'editStock', 'viewQueue', 'verifyPayment', 'viewDiscountLog', 'approve', 'reprint'],
+  owner: ['manageSetup', 'openShift', 'markSoldOut', 'sell', 'lineVoid', 'voidPaid', 'refund', 'comp', 'openDay', 'editStock', 'editPrices', 'viewQueue', 'viewAllBranches', 'verifyPayment', 'viewDiscountLog', 'approve', 'reprint', 'remake'],
+  supervisor: ['openShift', 'markSoldOut', 'sell', 'lineVoid', 'voidPaid', 'refund', 'comp', 'openDay', 'editStock', 'viewQueue', 'verifyPayment', 'viewDiscountLog', 'approve', 'reprint', 'remake'],
   cashier: ['openShift', 'markSoldOut', 'sell', 'lineVoid'],
-  barista: ['markSoldOut', 'viewQueue'],
+  barista: ['markSoldOut', 'viewQueue', 'remake'],
   trainee: ['trainingOnly'],
 }
 

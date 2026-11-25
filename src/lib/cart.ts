@@ -21,6 +21,7 @@ export type CartLine = {
   notes: string[] // quick chips: "Less ice", "Extra hot"
   allergy: string // free text; printed loudly on the bar ticket (1J)
   qty: number
+  comp?: { code: string; note: string } // free on purpose: priced at ₱0, the value is kept as a comp
 }
 export type Cart = { orderType: OrderType; name: string; table: string; lines: CartLine[]; discount?: StatutoryInput }
 
@@ -28,7 +29,10 @@ export const MAX_QTY = 99
 export const emptyCart = (): Cart => ({ orderType: 'takeout', name: '', table: '', lines: [] })
 
 export const lineUnit = (l: CartLine) => l.basePrice + l.mods.reduce((s, m) => s + m.charge, 0)
-export const lineTotal = (l: CartLine) => lineUnit(l) * l.qty
+export const lineTotal = (l: CartLine) => (l.comp ? 0 : lineUnit(l) * l.qty)
+/** What a comped line would have cost. */
+export const compValue = (l: CartLine) => (l.comp ? lineUnit(l) * l.qty : 0)
+export const compTotal = (c: Cart) => c.lines.reduce((s, l) => s + compValue(l), 0)
 export const cartTotal = (c: Cart) => c.lines.reduce((s, l) => s + lineTotal(l), 0)
 export const cartCount = (c: Cart) => c.lines.reduce((s, l) => s + l.qty, 0)
 
@@ -39,6 +43,7 @@ const configKey = (l: CartLine) =>
     l.mods.map((m) => `${m.modifierId}:${m.qty}`).sort(),
     [...l.notes].sort(),
     l.allergy.trim().toLowerCase(),
+    l.comp ?? null,
   ])
 
 export function buildLine(

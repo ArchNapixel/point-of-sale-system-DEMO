@@ -41,6 +41,7 @@ export function priceCart(cart: Cart, vatRegistered: boolean) {
   const d = cart.discount
   const lines: DiscountLine[] = d
     ? cart.lines.flatMap((l) => {
+        if (l.comp) return [] // a comped line is already free
         const units = Math.min(Math.floor(d.picks[l.id] ?? 0), l.qty)
         return units > 0 ? [{ lineId: l.id, name: l.name, units, ...statutoryLine(lineUnit(l) * units, vatRegistered) }] : []
       })

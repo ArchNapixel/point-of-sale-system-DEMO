@@ -9,6 +9,7 @@ import { formatPeso } from '../lib/money'
 import { matchesOrder } from '../lib/invoice'
 import { Err, useAction } from '../ui'
 import Receipt from './Receipt'
+import RefundPanel from './RefundPanel'
 
 // ponytail: search scans every order in this browser's database in memory (fine for a café's volume; add an index if it gets slow).
 // Shows the last 50 matches. Voids/refunds come later (2x).
@@ -17,10 +18,12 @@ export default function Orders() {
   const { error, run } = useAction()
   const [q, setQ] = useState('')
   const [viewing, setViewing] = useState('')
+  const [acting, setActing] = useState<{ id: string; mode: 'void' | 'refund' } | null>(null)
   const orders = useLiveQuery(async () => {
     const list = (await db.orders.orderBy('paidAt').reverse().toArray()).filter((o) => matchesOrder(o, q)).slice(0, 50)
     const pays = await db.payments.where('orderId').anyOf(list.map((o) => o.id)).toArray()
-    return list.map((o) => ({ ...o, payments: pays.filter((p) => p.orderId === o.id) }))
+    const refunds = await db.refunds.where('orderId').anyOf(list.map((o) => o.id)).toArray()
+    return list.map((o) => ({ ...o, payments: pays.filter((p) => p.orderId === o.id), refunded: refunds.filter((r) => r.orderId === o.id).reduce((s, r) => s + r.amount, 0) }))
   }, [q])
   const log = useLiveQuery(() => db.discountLog.orderBy('at').reverse().limit(50).toArray(), [])
   const approvals = useLiveQuery(async () => {
@@ -43,11 +46,19 @@ export default function Orders() {
           <li key={o.id}>
             <div className="row between">
               <span>
-                <strong>#{o.number}</strong> <small>{o.invoiceNo}</small> {o.name || (o.table && `Table ${o.table}`) || o.orderType}{' '}
+                <strong>#{o.number}</strong> <small>{o.invoiceNo}</small> {o.status === 'void' && <strong>VOID </strong>}{o.refunded > 0 && o.status !== 'void' && <strong>REFUNDED {formatPeso(o.refunded)} </strong>}{o.comps && <strong>COMP </strong>}{o.name || (o.table && `Table ${o.table}`) || o.orderType}{' '}
                 <small>{o.lines.reduce((s, l) => s + l.qty, 0)} items · {new Date(o.paidAt).toLocaleTimeString('en-PH', { timeStyle: 'short' })} · {o.lines.map((l) => `${l.qty}× ${l.name}`).join(', ')}</small>
               </span>
-              <span className="row"><strong>{formatPeso(o.total)}</strong><button onClick={() => setViewing(o.id)}>Invoice</button></span>
+              <span className="row"><strong>{formatPeso(o.total)}</strong><button onClick={() => setViewing(o.id)}>Invoice</button>
+                {o.status === 'paid' && can(user.role, 'sell') && (
+                  <>
+                    <button onClick={() => setActing({ id: o.id, mode: 'void' })}>Void</button>
+                    <button onClick={() => setActing({ id: o.id, mode: 'refund' })}>Refund</button>
+                  </>
+                )}
+              </span>
             </div>
+            {acting?.id === o.id && <RefundPanel key={acting.mode} orderId={o.id} mode={acting.mode} userId={user.id} onDone={() => setActing(null)} />}
             {o.payments.map((p) => (
               <div key={p.id} className="row between">
                 <small>

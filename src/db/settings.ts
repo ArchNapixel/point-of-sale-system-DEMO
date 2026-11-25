@@ -12,6 +12,8 @@ export const DEFAULT_SETTINGS = {
   platformCommissionPct: 20,
   cashierDiscountLimitCentavos: pesos(300), // a cashier's Senior/PWD discount above this needs a supervisor PIN
   supervisorDiscountLimitCentavos: pesos(2000), // above this, the owner approves
+  cashierCompLimitCentavos: pesos(50), // a cashier's comp above this needs a supervisor PIN
+  supervisorCompLimitCentavos: pesos(1000), // above this, the owner approves
   queueMinutesPerItem: 2, // wait estimate at the cashier: minutes per waiting item
   storeName: 'DEMO Café',
   storeTin: '000-000-000-000',

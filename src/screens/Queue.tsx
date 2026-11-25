@@ -2,7 +2,9 @@ import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useAuth } from '../auth'
 import { db, type QueueItem } from '../db/db'
-import { setItemStatus, setRush, undoStatus } from '../db/queue'
+import { remakeItem, setItemStatus, setRush, undoStatus } from '../db/queue'
+import { can } from '../lib/roles'
+import ReasonFields, { NO_REASON } from './ReasonFields'
 import { FLOW, RUSH_REASONS, STATUS_ACTION, UNDO_MS, byUrgency, orderReady, waitEstimate } from '../lib/queue'
 import { getSetting } from '../db/settings'
 import { Err, useAction } from '../ui'
@@ -15,6 +17,8 @@ export default function Queue() {
   const [station, setStation] = useState<'bar' | 'kitchen'>('bar')
   const [labelsFor, setLabelsFor] = useState('')
   const [reason, setReason] = useState(RUSH_REASONS[0])
+  const [remaking, setRemaking] = useState('')
+  const [why, setWhy] = useState(NO_REASON)
   const all = useLiveQuery(async () => {
     const open = await db.queueItems.where('status').anyOf('queued', 'making', 'ready').toArray()
     const ids = [...new Set(open.map((i) => i.orderId))]
@@ -26,7 +30,7 @@ export default function Queue() {
   const orders = new Map<string, QueueItem[]>()
   for (const i of all) orders.set(i.orderId, [...(orders.get(i.orderId) ?? []), i])
   const cards = [...orders.values()]
-    .map((items) => ({ items, here: items.filter((i) => i.station === station && i.status !== 'served') }))
+    .map((items) => ({ items, here: items.filter((i) => i.station === station && i.status !== 'served' && i.status !== 'void') }))
     .filter((c) => c.here.length > 0)
     .sort((a, b) => byUrgency(a.items[0], b.items[0]))
   const est = waitEstimate(all, station, perItem)
@@ -64,8 +68,16 @@ export default function Queue() {
                   </div>
                   <span className="row">
                     {canUndo && <button onClick={() => run(() => undoStatus(i.id, user.id))}>Undo</button>}
+                    {can(user.role, 'remake') && <button onClick={() => { setWhy(NO_REASON); setRemaking(i.id) }}>Remake</button>}
                     {next && <button className="primary" onClick={() => run(() => setItemStatus(i.id, next, user.id))}>{STATUS_ACTION[next]}</button>}
                   </span>
+                  {remaking === i.id && (
+                    <div className="row">
+                      <ReasonFields value={why} onChange={setWhy} />
+                      <button className="primary" onClick={async () => { if (await run(() => remakeItem(i.id, user.id, why.code, why.note))) setRemaking('') }}>Make again</button>
+                      <button onClick={() => setRemaking('')}>Cancel</button>
+                    </div>
+                  )}
                 </div>
               )
             })}

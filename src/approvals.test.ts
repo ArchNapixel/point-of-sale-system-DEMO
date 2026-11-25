@@ -9,7 +9,7 @@ import { logPrint, payOrder } from './db/orders'
 import { addLine, emptyCart, type CartLine } from './lib/cart'
 import { canApprove, needsApproval } from './lib/approval'
 
-const LIMITS = { discountCashier: 30000, discountSupervisor: 200000 }
+const LIMITS = { discountCashier: 30000, discountSupervisor: 200000, compCashier: 5000, compSupervisor: 100000 }
 let t1 = ''
 let cashier = '', sup = '', owner = ''
 
@@ -93,16 +93,16 @@ describe('enforced where the action happens', () => {
   })
   it('with a valid approval it saves, records the approver, and the approval is good once', async () => {
     const a = await approve({ action: 'discount', requesterId: cashier, approverId: sup, pin: '2222', terminalId: t1, amount: 48000 })
-    const { order } = await payOrder(t1, cashier, bigDiscountCart(), cash(200000), 'k1', undefined, a.id)
+    const { order } = await payOrder(t1, cashier, bigDiscountCart(), cash(200000), 'k1', undefined, { discount: a.id })
     expect(order.discountApprovedBy).toBe(sup)
     expect((await db.approvals.get(a.id))?.usedFor).toBe(order.id)
-    await expect(payOrder(t1, cashier, bigDiscountCart(), cash(200000), 'k2', undefined, a.id)).rejects.toThrow(/supervisor PIN/)
+    await expect(payOrder(t1, cashier, bigDiscountCart(), cash(200000), 'k2', undefined, { discount: a.id })).rejects.toThrow(/supervisor PIN/)
   })
   it('an approval for a smaller amount, or for someone else, does not cover it', async () => {
     const small = await approve({ action: 'discount', requesterId: cashier, approverId: sup, pin: '2222', terminalId: t1, amount: 31000 })
-    await expect(payOrder(t1, cashier, bigDiscountCart(), cash(200000), 'k1', undefined, small.id)).rejects.toThrow(/supervisor PIN/)
+    await expect(payOrder(t1, cashier, bigDiscountCart(), cash(200000), 'k1', undefined, { discount: small.id })).rejects.toThrow(/supervisor PIN/)
     const theirs = await approve({ action: 'discount', requesterId: sup, approverId: owner, pin: '3333', terminalId: t1, amount: 48000 })
-    await expect(payOrder(t1, cashier, bigDiscountCart(), cash(200000), 'k2', undefined, theirs.id)).rejects.toThrow(/supervisor PIN/)
+    await expect(payOrder(t1, cashier, bigDiscountCart(), cash(200000), 'k2', undefined, { discount: theirs.id })).rejects.toThrow(/supervisor PIN/)
   })
   it('the limit is a setting', async () => {
     await setSetting('cashierDiscountLimitCentavos', 50000)
