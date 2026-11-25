@@ -48,9 +48,9 @@ Because there is no seed data, you need screens to enter it.
 - [x] Order stays unpaid until payment lines add up to the total (a cart is saved as an order only once paid)
 
 ### 1G — Other payments
-- [ ] GCash/Maya: reference number, Pending verification, duplicate reference rejected
-- [ ] Card: approval code and last 4 digits
-- [ ] Split tender and partial payment
+- [x] GCash/Maya: reference number, Pending verification, duplicate reference rejected
+- [x] Card: approval code and last 4 digits
+- [x] Split tender and partial payment
 
 ### 1H — Senior/PWD discount
 - [ ] VAT-aware formula picked by the store setting

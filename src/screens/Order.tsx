@@ -6,7 +6,8 @@ import { getSellContext } from '../db/shifts'
 import { getSellableMenu } from '../db/menu'
 import { discardHeld, holdCart, listHeld, resumeHeld } from '../db/carts'
 import { DEVICE_KEY, resolveTerminal } from '../db/device'
-import { payCash } from '../db/orders'
+import { payOrder } from '../db/orders'
+import { PAY_METHODS, applyLines, type PayLine, type PayMethod } from '../lib/payments'
 import { parsePesos, pesos } from '../lib/money'
 import {
   ORDER_TYPES, addLine, buildLine, cartCount, cartTotal, changeQty, duplicateLine, emptyCart, lineTotal, removeLine, replaceLine,
@@ -48,33 +49,71 @@ export default function Order() {
   return <OrderScreen terminalId={terminal.id} shiftId={ctx.shift.id} user={user} />
 }
 
-/** Cash tendered + change. The key is made once per open panel, so a double tap can't save two payments. */
-function CashPanel({ total, onPay, onCancel }: { total: number; onPay: (tendered: number, key: string) => Promise<unknown>; onCancel: () => void }) {
-  const [text, setText] = useState('')
+/** Takes one or more payment lines (split tender). The key is made once per open panel, so a double tap can't save two orders. */
+function PayPanel({ total, onPay, onCancel }: { total: number; onPay: (lines: PayLine[], key: string) => Promise<unknown>; onCancel: () => void }) {
+  const [lines, setLines] = useState<PayLine[]>([])
+  const [method, setMethod] = useState<PayMethod>('cash')
+  const [f, setF] = useState({ amount: '', ref: '', code: '', last4: '' })
   const [key] = useState(newId)
   const [busy, setBusy] = useState(false)
   const { error, run } = useAction()
-  const tendered = parsePesos(text)
-  const change = tendered === null ? null : tendered - total
-  const set = (c: number) => setText(String(c / 100))
+  const balance = applyLines(total, lines).remaining
+  const cents = parsePesos(f.amount)
+  const touched = method === 'cash' ? f.amount !== '' : Object.values(f).some(Boolean)
+  // An empty amount on an e-wallet or card means "the whole balance".
+  const current: PayLine | null = !touched
+    ? null
+    : method === 'cash'
+      ? { method, tendered: cents ?? 0 }
+      : { method, amount: f.amount ? (cents ?? 0) : balance, reference: f.ref, approvalCode: f.code, last4: f.last4 }
+  const all = current ? [...lines, current] : lines
+  let result: ReturnType<typeof applyLines> | undefined
+  let problem = ''
+  try { result = applyLines(total, all) } catch (e) { problem = (e as Error).message }
+  const set = (c: number) => setF({ ...f, amount: String(c / 100) })
+  const field = (label: string, k: keyof typeof f, extra = {}) => (
+    <input aria-label={label} placeholder={label} value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} {...extra} />
+  )
   return (
     <div className="card">
       <div className="row between"><span>Total</span><strong>{formatPeso(total)}</strong></div>
-      <div className="row">
-        <button onClick={() => set(total)}>Exact</button>
-        {[100, 500, 1000].map((p) => <button key={p} onClick={() => set(pesos(p))}>{formatPeso(pesos(p)).replace('.00', '')}</button>)}
+      {lines.map((l, i) => (
+        <div key={i} className="row between">
+          <small>{PAY_METHODS.find((m) => m.id === l.method)?.label} {l.reference || l.approvalCode || ''}</small>
+          <span>{formatPeso(applyLines(total, lines.slice(0, i + 1)).applied[i].amount)} <button onClick={() => setLines(lines.filter((_, j) => j !== i))}>Remove</button></span>
+        </div>
+      ))}
+      <div className="seg">
+        {PAY_METHODS.map((m) => (
+          <button key={m.id} aria-pressed={method === m.id} onClick={() => { setMethod(m.id); setF({ amount: '', ref: '', code: '', last4: '' }) }}>{m.label}</button>
+        ))}
       </div>
-      <input aria-label="Cash tendered" inputMode="decimal" placeholder="Cash tendered" value={text} onChange={(e) => setText(e.target.value)} autoFocus />
+      {method === 'cash' && (
+        <div className="row">
+          <button onClick={() => set(balance)}>Exact</button>
+          {[100, 500, 1000].map((p) => <button key={p} onClick={() => set(pesos(p))}>{formatPeso(pesos(p)).replace('.00', '')}</button>)}
+        </div>
+      )}
+      {field(method === 'cash' ? 'Cash tendered' : `Amount (blank = ${formatPeso(balance)})`, 'amount', { inputMode: 'decimal', autoFocus: true })}
+      {(method === 'gcash' || method === 'maya') && field('Reference number', 'ref')}
+      {method === 'card' && <>{field('Approval code', 'code')}{field('Last 4 digits', 'last4', { inputMode: 'numeric', maxLength: 4 })}</>}
       <p className="change" style={{ fontSize: '2rem' }}>
-        {change === null ? 'Change —' : change < 0 ? `Short ${formatPeso(-change)}` : `Change ${formatPeso(change)}`}
+        {!result ? '' : result.remaining > 0 ? `Still to pay ${formatPeso(result.remaining)}` : `Change ${formatPeso(result.change)}`}
       </p>
+      {problem && <small>{problem}</small>}
       <Err msg={error} />
       <div className="row">
         <button onClick={onCancel}>Back</button>
         <button
+          disabled={!current || !result || result.remaining === 0}
+          onClick={() => { setLines(all); setF({ amount: '', ref: '', code: '', last4: '' }) }}
+        >
+          Add another payment
+        </button>
+        <button
           className="primary"
-          disabled={busy || change === null || change < 0}
-          onClick={async () => { setBusy(true); await run(() => onPay(tendered!, key)); setBusy(false) }}
+          disabled={busy || !result || result.remaining > 0}
+          onClick={async () => { setBusy(true); await run(() => onPay(all, key)); setBusy(false) }}
         >
           Confirm payment
         </button>
@@ -89,7 +128,7 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
   const [picking, setPicking] = useState<{ item: MenuItem; initial?: CartLine } | null>(null)
   const [catId, setCatId] = useState('')
   const [paying, setPaying] = useState(false)
-  const [done, setDone] = useState<{ number: number; change: number } | null>(null)
+  const [done, setDone] = useState<{ number: number; change: number; pending: boolean } | null>(null)
   const menu = useLiveQuery(getSellableMenu, [])
   const held = useLiveQuery(() => listHeld(terminalId), [terminalId])
   const { error, run } = useAction()
@@ -224,15 +263,15 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
         </div>
         <Err msg={error} />
         {paying && (
-          <CashPanel
+          <PayPanel
             total={cartTotal(cart)}
             onCancel={() => setPaying(false)}
-            onPay={async (tendered, key) => {
-              const { order, payment } = await payCash(terminalId, user.id, cart, tendered, key)
+            onPay={async (lines, key) => {
+              const { order, payments, change } = await payOrder(terminalId, user.id, cart, lines, key)
               setCart(emptyCart())
               setHistory([])
               setPaying(false)
-              setDone({ number: order.number, change: payment.tendered - payment.amount })
+              setDone({ number: order.number, change: change ?? 0, pending: payments.some((p) => p.status === 'pending') })
             }}
           />
         )}
@@ -240,6 +279,7 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
           <div className="card" role="status">
             <p>Order #{done.number} paid</p>
             <p className="change">Change {formatPeso(done.change)}</p>
+            {done.pending && <p>E-wallet payment is pending. A supervisor verifies it in the Orders tab once it shows in the merchant app.</p>}
             <button onClick={() => setDone(null)}>Next order</button>
           </div>
         )}

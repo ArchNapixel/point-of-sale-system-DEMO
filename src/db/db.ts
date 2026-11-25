@@ -1,6 +1,7 @@
 import Dexie, { type EntityTable } from 'dexie'
 import type { Role } from '../lib/roles'
 import type { Cart } from '../lib/cart'
+import type { PayMethod } from '../lib/payments'
 
 // Every row has a device-made UUID id. Archive via `active: false`, never delete (rule 3).
 export type Branch = { id: string; name: string; active: boolean }
@@ -75,9 +76,15 @@ export type Order = {
 export type Payment = {
   id: string
   orderId: string
-  method: 'cash'
+  method: PayMethod
   amount: number // centavos applied to the order
-  tendered: number // cash handed over; change = tendered - amount
+  tendered: number // cash handed over; change = tendered - amount (same as amount for non-cash)
+  reference?: string // GCash/Maya reference number, uppercase; a reference can be used once, ever
+  approvalCode?: string // card
+  last4?: string // card
+  status: 'verified' | 'pending' // e-wallet payments stay pending until a supervisor sees them in the merchant app
+  verifiedBy?: string
+  verifiedAt?: string
   idempotencyKey: string // unique: a double tap or retry returns the first payment (rule 5)
   at: string
   businessDate: string
@@ -172,4 +179,7 @@ db.version(5).stores({
 db.version(6).stores({
   orders: 'id, businessDayId, businessDate, paidAt',
   payments: 'id, orderId, &idempotencyKey, businessDate',
+})
+db.version(7).stores({
+  payments: 'id, orderId, &idempotencyKey, businessDate, reference, status',
 })
