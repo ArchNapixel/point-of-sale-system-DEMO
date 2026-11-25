@@ -2,10 +2,18 @@
 
 A demo point-of-sale system for a Philippine café (2 branches, ~40 seats each, 3–6 staff per shift). Source of truth for behaviour: [CAFE_WORKFLOW.md](CAFE_WORKFLOW.md). Build order: [ROADMAP.md](ROADMAP.md).
 
-Status: no code yet. Tech stack is **not chosen** — decide it in roadmap Phase 0 and record it in the "Stack" section below.
+Status: no code yet. Stack is chosen (below); Phase 0 scaffolds it.
 
 ## Stack
-_TBD (Phase 0)._ Constraints from the workflow doc: offline-first sale flow with local DB + sync, device-generated UUIDs, touch-friendly order screen (tablet), receipt/ticket/label printing, a phone-friendly owner view.
+Web-based, offline-first PWA (a website opened in Chrome; no install needed).
+- **Frontend:** React + TypeScript + Vite, with a service worker so the app loads offline. Dev: `npm run dev`. Test offline with `npm run build && npm run preview` (service worker only runs in a production build).
+- **Local DB:** IndexedDB via Dexie. Every sale is written locally first.
+- **Sync:** outbox queue. Device-made UUIDs + idempotency keys; the server ignores duplicates. No sync framework unless live multi-terminal updates are needed.
+- **Backend:** small Node API (Hono) in front of **Neon** Postgres. Not Supabase. PINs and roles are handled in our own API.
+- **Hosting:** static frontend (Vercel/Netlify/Cloudflare Pages) over HTTPS; API and Neon separate.
+- **Printing:** browser print first; ESC/POS and cash drawer later via Web Serial/WebUSB (Chrome only).
+- **Targets:** Chrome on Android/Windows tablets (iOS Safari can evict stored data). Staff open the site once per shift so the cached copy is loaded.
+- **No seed data:** the owner enters all data by hand.
 
 ## Product rules (never violate)
 1. **Never block a sale during rush.** Flag problems (negative stock, unverified GCash, etc.) for a supervisor; don't stop the cashier.

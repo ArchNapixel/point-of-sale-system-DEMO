@@ -4,7 +4,7 @@ Derived from section 19 of [CAFE_WORKFLOW.md](CAFE_WORKFLOW.md). Phase 1 alone i
 
 ## Phase 0 — Foundations
 - [ ] Choose stack (offline-capable local DB + sync, tablet UI, printing) and record it in [CLAUDE.md](CLAUDE.md)
-- [ ] Project scaffold, test runner, seed data (1 branch, 2 terminals, sample menu, users per role)
+- [ ] Project scaffold and test runner (no seed data; data is entered by hand)
 - [ ] Core entities: Branch, Terminal, User, Role, Permission, Settings (VAT, float, tolerance, cutoff, limits)
 - [ ] Money as integer centavos; UUID generation on device; AuditLog helper; "DEMO — NOT A VALID INVOICE" receipt footer
 
