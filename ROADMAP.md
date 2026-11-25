@@ -14,17 +14,17 @@ Derived from section 19 of [CAFE_WORKFLOW.md](CAFE_WORKFLOW.md). Phase 1 alone i
 
 ### 1A — Setup and sign-in
 Because there is no seed data, you need screens to enter it.
-- [ ] App shell and navigation (tablet-friendly)
-- [ ] Add/edit branch, terminal (with invoice prefix like `T1`) and users with a role and PIN
-- [ ] Settings screen (VAT on/off, float, tolerance, cutoff hour)
+- [x] App shell and navigation (tablet-friendly)
+- [x] Add/edit branch, terminal (with invoice prefix like `T1`) and users with a role and PIN
+- [x] Settings screen (VAT on/off, float, tolerance, cutoff hour)
 - [x] PIN sign-in and sign-out (first run creates the owner)
-- [ ] Hide screens a role can't use (once screens exist)
+- [x] Hide screens a role can't use (Setup and Settings are owner-only; add new screens to the tab list in App.tsx)
 
 ### 1B — Business day and shift open
-- [ ] Open the business day for the branch (supervisor)
-- [ ] Open a shift on a terminal; count the float by denomination
-- [ ] Flag a gap against last close; block a new shift while the prior one is unclosed
-- [ ] Nobody can sell without an open day and shift
+- [x] Open the business day for the branch (supervisor)
+- [x] Open a shift on a terminal; count the float by denomination
+- [x] Flag a gap against last close; block a new shift while the prior one is unclosed
+- [x] Nobody can sell without an open day and shift (`getSellContext`, used by the order screen in 1E)
 
 ### 1C — Menu: categories, items, variants
 - [ ] Categories and items, archive instead of delete

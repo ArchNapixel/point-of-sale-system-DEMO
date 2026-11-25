@@ -1,7 +1,8 @@
 import 'fake-indexeddb/auto'
 import { describe, expect, it } from 'vitest'
 import { checkPin, hashPin, isValidPin } from './lib/pin'
-import { createUser, listActiveUsers, verifyLogin } from './db/users'
+import { createUser } from './db/setup'
+import { listActiveUsers, verifyLogin } from './db/users'
 import { db } from './db/db'
 
 describe('login', () => {

@@ -1,5 +1,28 @@
-body { margin: 0; font-family: system-ui, sans-serif; padding: 1rem; }
-.login { max-width: 22rem; margin: 3rem auto; }
+body { margin: 0; font-family: system-ui, sans-serif; }
+main { padding: 1rem; max-width: 56rem; margin: 0 auto; }
+footer { padding: 1rem; text-align: center; opacity: 0.6; }
+button { min-height: 40px; padding: 0.4rem 0.9rem; font-size: 1rem; }
+input, select { font-size: 1rem; padding: 0.45rem; min-height: 40px; box-sizing: border-box; }
+
+.shell { display: flex; gap: 1rem; align-items: center; justify-content: space-between; padding: 0.5rem 1rem; border-bottom: 1px solid #ccc; flex-wrap: wrap; }
+.shell nav { display: flex; gap: 0.5rem; }
+.shell nav button[aria-current='page'] { font-weight: 700; border-bottom: 3px solid currentColor; }
+
+.card { border: 1px solid #ccc; border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1rem; }
+.card ul { padding-left: 1.1rem; display: grid; gap: 0.4rem; }
+.archived { opacity: 0.5; text-decoration: line-through; }
+.row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+.settings { display: grid; gap: 0.75rem; max-width: 28rem; }
+.settings label { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+.denoms { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 0.5rem; margin-bottom: 0.75rem; }
+.denoms label { display: grid; gap: 0.2rem; font-size: 0.9rem; }
+.compare { border-collapse: collapse; margin-bottom: 0.75rem; }
+.compare th { text-align: left; padding: 0.25rem 1rem 0.25rem 0; font-weight: 500; }
+.compare td { text-align: right; font-variant-numeric: tabular-nums; font-size: 1.1rem; }
+.compare .flag { color: #b00020; font-weight: 700; }
+[role='alert'] { color: #b00020; margin: 0.25rem 0; }
+
+.login { max-width: 22rem; margin: 3rem auto; padding: 0 1rem; }
 .login form { display: grid; gap: 0.75rem; }
 .login label { display: grid; gap: 0.25rem; }
 .login input { font-size: 1.25rem; padding: 0.6rem; }

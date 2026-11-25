@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useAuth } from './auth'
-import { createUser, listActiveUsers } from './db/users'
+import { createUser } from './db/setup'
+import { listActiveUsers } from './db/users'
 import { isValidPin } from './lib/pin'
 import type { User } from './db/db'
 
