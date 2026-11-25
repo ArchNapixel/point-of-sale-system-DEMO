@@ -2,6 +2,7 @@ import Dexie, { type EntityTable } from 'dexie'
 import type { Role } from '../lib/roles'
 import type { Cart } from '../lib/cart'
 import type { PayMethod } from '../lib/payments'
+import type { OrderDiscount } from '../lib/discount'
 
 // Every row has a device-made UUID id. Archive via `active: false`, never delete (rule 3).
 export type Branch = { id: string; name: string; active: boolean }
@@ -68,10 +69,28 @@ export type Order = {
   name: string
   table: string
   lines: Cart['lines'] // copied snapshot (rule 2)
-  total: number // centavos
+  gross: number // centavos before any discount
+  total: number // centavos the customer pays (gross - discount.reduction)
+  discount?: OrderDiscount
   status: 'paid'
   paidAt: string
   cashierId: string
+}
+// One row per Senior/PWD discount given: the month-end tax-claim record. repeatId flags an ID number already used that business date.
+export type DiscountLogEntry = {
+  id: string
+  orderId: string
+  businessDate: string
+  at: string
+  cashierId: string
+  kind: OrderDiscount['kind']
+  name: string
+  idNumber: string
+  items: string // e.g. "1× Latte"
+  vatExempt: number
+  discountAmount: number
+  reduction: number
+  repeatId: boolean
 }
 export type Payment = {
   id: string
@@ -148,6 +167,7 @@ export const db = new Dexie('demo-pos') as Dexie & {
   counters: EntityTable<Counter, 'id'>
   orders: EntityTable<Order, 'id'>
   payments: EntityTable<Payment, 'id'>
+  discountLog: EntityTable<DiscountLogEntry, 'id'>
 }
 
 db.version(1).stores({
@@ -182,4 +202,7 @@ db.version(6).stores({
 })
 db.version(7).stores({
   payments: 'id, orderId, &idempotencyKey, businessDate, reference, status',
+})
+db.version(8).stores({
+  discountLog: 'id, orderId, businessDate, idNumber',
 })

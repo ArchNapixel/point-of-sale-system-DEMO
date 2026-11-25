@@ -1,4 +1,5 @@
 import type { quote } from './modifierPricing'
+import type { StatutoryInput } from './discount'
 
 export type OrderType = 'dine-in' | 'takeout' | 'pickup'
 export const ORDER_TYPES: { id: OrderType; label: string }[] = [
@@ -21,7 +22,7 @@ export type CartLine = {
   allergy: string // free text; printed loudly on the bar ticket (1J)
   qty: number
 }
-export type Cart = { orderType: OrderType; name: string; table: string; lines: CartLine[] }
+export type Cart = { orderType: OrderType; name: string; table: string; lines: CartLine[]; discount?: StatutoryInput }
 
 export const MAX_QTY = 99
 export const emptyCart = (): Cart => ({ orderType: 'takeout', name: '', table: '', lines: [] })

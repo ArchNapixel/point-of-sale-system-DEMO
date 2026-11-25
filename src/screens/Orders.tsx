@@ -16,7 +16,8 @@ export default function Orders() {
     const pays = await db.payments.where('orderId').anyOf(list.map((o) => o.id)).toArray()
     return list.map((o) => ({ ...o, payments: pays.filter((p) => p.orderId === o.id) }))
   }, [])
-  if (!orders || !user) return null
+  const log = useLiveQuery(() => db.discountLog.orderBy('at').reverse().limit(50).toArray(), [])
+  if (!orders || !user || !log) return null
   const label = (m: string) => PAY_METHODS.find((x) => x.id === m)?.label ?? m
   return (
     <section>
@@ -47,6 +48,23 @@ export default function Orders() {
           </li>
         ))}
       </ul>
+      {can(user.role, 'viewDiscountLog') && (
+        <>
+          <h3>Senior/PWD discount log</h3>
+          {log.length === 0 && <p className="empty">No Senior/PWD discounts given.</p>}
+          <ul className="lines">
+            {log.map((r) => (
+              <li key={r.id} className="row between">
+                <span>
+                  {r.businessDate} · {r.kind === 'senior' ? 'Senior' : 'PWD'} {r.name} · ID {r.idNumber} {r.repeatId && <strong>· REPEAT ID TODAY</strong>}{' '}
+                  <small>{r.items} · VAT-exempt {formatPeso(r.vatExempt)} · 20% {formatPeso(r.discountAmount)}</small>
+                </span>
+                <strong>−{formatPeso(r.reduction)}</strong>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
     </section>
   )
 }

@@ -53,10 +53,10 @@ Because there is no seed data, you need screens to enter it.
 - [x] Split tender and partial payment
 
 ### 1H — Senior/PWD discount
-- [ ] VAT-aware formula picked by the store setting
-- [ ] Tick which lines belong to the ID holder; capture name and ID number
-- [ ] One statutory discount, lower-price-wins against promos
-- [ ] Discount log with repeat-ID flag
+- [x] VAT-aware formula picked by the store setting
+- [x] Tick which lines belong to the ID holder; capture name and ID number
+- [x] One statutory discount per purchase (lower-price-wins against promos is built with promos in 2D)
+- [x] Discount log with repeat-ID flag
 
 ### 1I — Invoices
 - [ ] Unbroken per-terminal number series

@@ -7,6 +7,8 @@ import { getSellableMenu } from '../db/menu'
 import { discardHeld, holdCart, listHeld, resumeHeld } from '../db/carts'
 import { DEVICE_KEY, resolveTerminal } from '../db/device'
 import { payOrder } from '../db/orders'
+import { getSetting } from '../db/settings'
+import { priceCart, validateStatutory, type StatutoryInput } from '../lib/discount'
 import { PAY_METHODS, applyLines, type PayLine, type PayMethod } from '../lib/payments'
 import { parsePesos, pesos } from '../lib/money'
 import {
@@ -122,12 +124,60 @@ function PayPanel({ total, onPay, onCancel }: { total: number; onPay: (lines: Pa
   )
 }
 
+/** Senior/PWD: pick the ID holder's own items. The formula comes from the store's VAT setting, never from the cashier. */
+function DiscountPanel({ cart, vat, onApply, onCancel }: { cart: Cart; vat: boolean; onApply: (d: StatutoryInput) => void; onCancel: () => void }) {
+  const [d, setD] = useState<StatutoryInput>(cart.discount ?? { kind: 'senior', name: '', idNumber: '', signed: false, picks: {} })
+  const { error, run } = useAction()
+  const preview = priceCart({ ...cart, discount: d }, vat)
+  const pick = (l: CartLine, units: number) => {
+    const picks = { ...d.picks }
+    if (units > 0) picks[l.id] = Math.min(units, l.qty)
+    else delete picks[l.id]
+    setD({ ...d, picks })
+  }
+  return (
+    <div className="card">
+      <div className="seg">
+        {(['senior', 'pwd'] as const).map((k) => (
+          <button key={k} aria-pressed={d.kind === k} onClick={() => setD({ ...d, kind: k })}>{k === 'senior' ? 'Senior Citizen' : 'PWD'}</button>
+        ))}
+      </div>
+      <input aria-label="ID holder name" placeholder="ID holder name" value={d.name} onChange={(e) => setD({ ...d, name: e.target.value })} />
+      <input aria-label="ID number" placeholder="ID number" value={d.idNumber} onChange={(e) => setD({ ...d, idNumber: e.target.value })} />
+      <small>Tick only the items the ID holder will consume.</small>
+      {cart.lines.map((l) => (
+        <div key={l.id} className="row between">
+          <label>
+            <input type="checkbox" checked={!!d.picks[l.id]} onChange={(e) => pick(l, e.target.checked ? l.qty : 0)} /> {l.name} <small>{l.variantLabel}</small>
+          </label>
+          {l.qty > 1 && !!d.picks[l.id] && (
+            <input aria-label={`Units of ${l.name} for the ID holder`} type="number" min={1} max={l.qty} value={d.picks[l.id]} onChange={(e) => pick(l, Number(e.target.value))} style={{ width: '4rem' }} />
+          )}
+        </div>
+      ))}
+      <label><input type="checkbox" checked={d.signed} onChange={(e) => setD({ ...d, signed: e.target.checked })} /> ID holder signed</label>
+      {preview.discount && <p>Discount −{formatPeso(preview.discount.reduction)} → pay {formatPeso(preview.total)}</p>}
+      <Err msg={error} />
+      <div className="row">
+        <button onClick={onCancel}>Back</button>
+        <button className="primary" onClick={() => run(async () => {
+          validateStatutory(d)
+          if (!preview.discount) throw new Error('Tick the items that belong to the ID holder')
+          onApply(d)
+        })}>Apply discount</button>
+      </div>
+    </div>
+  )
+}
+
 function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftId: string; user: User }) {
   const [cart, setCart] = useState<Cart>(() => loadCart(terminalId))
   const [history, setHistory] = useState<Cart[]>([]) // carts before each change to the lines, for Undo
   const [picking, setPicking] = useState<{ item: MenuItem; initial?: CartLine } | null>(null)
   const [catId, setCatId] = useState('')
   const [paying, setPaying] = useState(false)
+  const [discounting, setDiscounting] = useState(false)
+  const vat = useLiveQuery(() => getSetting('vatRegistered'), [])
   const [done, setDone] = useState<{ number: number; change: number; pending: boolean } | null>(null)
   const menu = useLiveQuery(getSellableMenu, [])
   const held = useLiveQuery(() => listHeld(terminalId), [terminalId])
@@ -137,7 +187,8 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
     localStorage.setItem(cartKey(terminalId), JSON.stringify(cart))
   }, [cart, terminalId])
 
-  if (!menu || !held) return null
+  if (!menu || !held || vat === undefined) return null
+  const priced = priceCart(cart, vat)
   const category = menu.find((c) => c.id === catId) ?? menu[0]
 
   const commit = (next: Cart) => {
@@ -253,18 +304,28 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
 
         <div className="row between total">
           <span>{cartCount(cart)} item{cartCount(cart) === 1 ? '' : 's'}</span>
-          <strong>{formatPeso(cartTotal(cart))}</strong>
+          <strong>{formatPeso(priced.total)}</strong>
         </div>
+        {priced.discount && (
+          <div className="row between">
+            <small>{priced.discount.kind === 'senior' ? 'Senior' : 'PWD'} discount ({priced.discount.name}) −{formatPeso(priced.discount.reduction)}</small>
+            <button onClick={() => setCart({ ...cart, discount: undefined })}>Remove</button>
+          </div>
+        )}
         <div className="row">
           <button onClick={undo} disabled={history.length === 0}>Undo</button>
           <button onClick={() => commit({ ...cart, lines: [] })} disabled={cart.lines.length === 0}>Clear</button>
           <button onClick={hold} disabled={cart.lines.length === 0}>Hold</button>
-          <button className="primary" onClick={() => setPaying(true)} disabled={cart.lines.length === 0}>Take payment</button>
+          <button onClick={() => { setPaying(false); setDiscounting(true) }} disabled={cart.lines.length === 0}>Senior/PWD</button>
+          <button className="primary" onClick={() => { setDiscounting(false); setPaying(true) }} disabled={cart.lines.length === 0}>Take payment</button>
         </div>
         <Err msg={error} />
+        {discounting && (
+          <DiscountPanel cart={cart} vat={vat} onCancel={() => setDiscounting(false)} onApply={(discount) => { setCart({ ...cart, discount }); setDiscounting(false) }} />
+        )}
         {paying && (
           <PayPanel
-            total={cartTotal(cart)}
+            total={priced.total}
             onCancel={() => setPaying(false)}
             onPay={async (lines, key) => {
               const { order, payments, change } = await payOrder(terminalId, user.id, cart, lines, key)
