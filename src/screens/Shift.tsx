@@ -3,7 +3,8 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useAuth } from '../auth'
 import { db, type Denoms, type Shift as ShiftRow } from '../db/db'
 import {
-  DENOMS, closeBusinessDay, countTotal, expectedFloat, getOpenDay, getOpenShift, lateCloseShift, openBusinessDay, openShift,
+  DENOMS, closeBusinessDay, closeShift, countTotal, expectedFloat, getCloseSummary, getOpenDay, getOpenShift, lateCloseShift, openBusinessDay,
+  openShift, submitCloseCount,
 } from '../db/shifts'
 import { DEVICE_KEY, resolveTerminal } from '../db/device'
 import { can } from '../lib/roles'
@@ -94,7 +95,7 @@ function OpenShift({ shift, terminalId }: { shift: ShiftRow; terminalId: string 
         {mine ? 'You' : cashier?.name ?? '…'} opened it {when(shift.openedAt)} with {formatPeso(shift.openingTotal)}.
         {shift.floatGap !== 0 && <> <strong>Float gap: {formatPeso(shift.floatGap)}</strong> against {formatPeso(shift.expectedFloat)}.</>}
       </p>
-      <p>Selling and the shift close arrive in the next parts.</p>
+      {mine && <CloseShift shiftId={shift.id} />}
       {user && can(user.role, 'openDay') && (
         <form
           className="row"
@@ -107,6 +108,79 @@ function OpenShift({ shift, terminalId }: { shift: ShiftRow; terminalId: string 
       <Err msg={error} />
       <small>Terminal {terminalId.slice(0, 4)}</small>
     </section>
+  )
+}
+
+function Denominations({ counts, setCounts }: { counts: Denoms; setCounts: (c: Denoms) => void }) {
+  return (
+    <div className="denoms">
+      {DENOMS.map((d) => (
+        <label key={d.key}>
+          {d.label}
+          <input
+            inputMode="numeric"
+            placeholder="0"
+            value={counts[d.key] ?? ''}
+            onChange={(e) => setCounts({ ...counts, [d.key]: Number(e.target.value.replace(/\D/g, '').slice(0, 4)) || 0 })}
+          />
+        </label>
+      ))}
+    </div>
+  )
+}
+
+/** Blind count first (no expected amount on screen), then expected vs counted, one recount, a note past the tolerance. */
+function CloseShift({ shiftId }: { shiftId: string }) {
+  const { user } = useAuth()
+  const [counts, setCounts] = useState<Denoms>({})
+  const [recounting, setRecounting] = useState(false)
+  const [note, setNote] = useState('')
+  const sum = useLiveQuery(async () => ({ s: await getCloseSummary(shiftId) }), [shiftId])
+  const { error, run } = useAction()
+  if (!user || !sum) return null
+  const s = sum.s
+  if (!s || recounting) {
+    return (
+      <form
+        className="card"
+        onSubmit={async (e) => { e.preventDefault(); if (await run(() => submitCloseCount(shiftId, user.id, counts))) { setRecounting(false); setCounts({}) } }}
+      >
+        <h4>Close shift: count the drawer{recounting ? ' again' : ''}</h4>
+        <small>Count every bill and coin. The expected amount is shown after you submit.</small>
+        <Denominations counts={counts} setCounts={setCounts} />
+        <p>You counted <strong>{formatPeso(countTotal(counts))}</strong></p>
+        <Err msg={error} />
+        <div className="row">
+          {recounting && <button type="button" onClick={() => setRecounting(false)}>Back</button>}
+          <button disabled={countTotal(counts) === 0}>Submit count</button>
+        </div>
+      </form>
+    )
+  }
+  return (
+    <div className="card">
+      <h4>Close shift: result</h4>
+      <table className="compare">
+        <tbody>
+          <tr><th>Expected (opening + cash sales)</th><td>{formatPeso(s.expected)}</td></tr>
+          <tr><th>You counted{s.attempts > 1 ? ' (recount)' : ''}</th><td>{formatPeso(s.counted)}</td></tr>
+          <tr className={s.within ? '' : 'flag'}><th>{s.diff < 0 ? 'Short' : s.diff > 0 ? 'Over' : 'Over/short'}</th><td>{formatPeso(s.diff)}</td></tr>
+        </tbody>
+      </table>
+      {!s.within && (
+        <>
+          <p role="status">Past the {formatPeso(s.tolerance)} tolerance. {s.attempts < 2 ? 'Recount once, or add a note to close.' : 'Add a note to close.'}</p>
+          <input aria-label="Over/short note" placeholder="What happened?" value={note} onChange={(e) => setNote(e.target.value)} />
+        </>
+      )}
+      {s.heldCarts > 0 && <p role="status">{s.heldCarts} held cart(s) from this shift are still open.</p>}
+      {s.pendingPayments > 0 && <p role="status">{s.pendingPayments} GCash/Maya payment(s) from this shift are still pending verification.</p>}
+      <Err msg={error} />
+      <div className="row">
+        {s.attempts < 2 && !s.within && <button onClick={() => setRecounting(true)}>Recount</button>}
+        <button className="primary" disabled={!s.within && !note.trim()} onClick={() => run(() => closeShift(shiftId, user.id, note))}>Close shift</button>
+      </div>
+    </div>
   )
 }
 
@@ -127,19 +201,7 @@ function OpenShiftForm({ terminalId }: { terminalId: string }) {
   return (
     <form onSubmit={submit} className="card">
       <h3>Open your shift: count the drawer</h3>
-      <div className="denoms">
-        {DENOMS.map((d) => (
-          <label key={d.key}>
-            {d.label}
-            <input
-              inputMode="numeric"
-              placeholder="0"
-              value={counts[d.key] ?? ''}
-              onChange={(e) => setCounts({ ...counts, [d.key]: Number(e.target.value.replace(/\D/g, '').slice(0, 4)) || 0 })}
-            />
-          </label>
-        ))}
-      </div>
+      <Denominations counts={counts} setCounts={setCounts} />
       <table className="compare">
         <tbody>
           <tr><th>Expected ({expected.source === 'last-close' ? 'left by last closer' : 'float setting'})</th><td>{formatPeso(expected.amount)}</td></tr>

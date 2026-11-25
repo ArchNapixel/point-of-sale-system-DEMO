@@ -3,6 +3,7 @@ import { newId } from '../lib/id'
 import { audit } from './audit'
 import { businessDate } from './businessDate'
 import { getSetting } from './settings'
+import { overShortStatus } from '../lib/cash'
 
 // Philippine bills and coins. Keys keep the ₱20 bill and ₱20 coin apart. Values are centavos.
 export const DENOMS = [
@@ -134,5 +135,85 @@ export async function lateCloseShift(shiftId: string, supervisorId: string, reas
       lateCloseReason: reason.trim(),
     })
     await audit({ userId: supervisorId, action: 'shift.lateClose', ref: shiftId, detail: { reason: reason.trim() } })
+  })
+}
+
+/**
+ * Cash that should be in the drawer: the opening count plus cash taken for sales (the part applied to orders, not the change given back).
+ * ponytail: paid-ins, paid-outs, cash drops and cash refunds are not built yet (Phase 2); add them to this sum when they land.
+ */
+export async function expectedCash(shiftId: string): Promise<number> {
+  const shift = await db.shifts.get(shiftId)
+  if (!shift) throw new Error('Shift not found')
+  const orderIds = (await db.orders.where('shiftId').equals(shiftId).toArray()).map((o) => o.id)
+  const cash = (await db.payments.where('orderId').anyOf(orderIds).toArray()).filter((p) => p.method === 'cash')
+  return shift.openingTotal + cash.reduce((s, p) => s + p.amount, 0)
+}
+
+/**
+ * Step 1 of closing: the blind count. Saves the count by denomination and does not close anything.
+ * The cashier gets one recount; both counts stay in the log. The screen shows expected only after this call.
+ */
+export async function submitCloseCount(shiftId: string, userId: string, denoms: Denoms) {
+  return db.transaction('rw', db.shifts, db.cashCounts, db.orders, db.payments, async () => {
+    const shift = await db.shifts.get(shiftId)
+    if (!shift || shift.closedAt) throw new Error('Shift is not open')
+    if (shift.cashierId !== userId) throw new Error("Only the cashier who opened this shift can close it. A supervisor can late-close it.")
+    const total = countTotal(denoms)
+    if (total === 0) throw new Error('Count the drawer first')
+    const attempt = (await db.cashCounts.where('shiftId').equals(shiftId).filter((c) => c.kind === 'close').count()) + 1
+    if (attempt > 2) throw new Error('One recount only. Close the shift with the second count.')
+    await db.cashCounts.add({ id: newId(), shiftId, kind: 'close', attempt, countedBy: userId, at: new Date().toISOString(), denoms, total })
+  })
+}
+
+/** Where the closing stands: the latest count against what the system expects. Null until a count is submitted. */
+export async function getCloseSummary(shiftId: string) {
+  const shift = await db.shifts.get(shiftId)
+  if (!shift) return null
+  const counts = (await db.cashCounts.where('shiftId').equals(shiftId).filter((c) => c.kind === 'close').toArray()).sort((a, b) => (a.attempt ?? 0) - (b.attempt ?? 0))
+  const last = counts[counts.length - 1]
+  if (!last) return null
+  const expected = await expectedCash(shiftId)
+  const tolerance = await getSetting('overShortToleranceCentavos')
+  const orderIds = (await db.orders.where('shiftId').equals(shiftId).toArray()).map((o) => o.id)
+  return {
+    attempts: counts.length,
+    counts: counts.map((c) => c.total),
+    counted: last.total,
+    expected,
+    tolerance,
+    ...overShortStatus(last.total, expected, tolerance),
+    // Flagged for the closer, never blocking (day close is where open items block, 2E).
+    heldCarts: (await db.heldCarts.where('shiftId').equals(shiftId).toArray()).filter((h) => h.status === 'held').length,
+    pendingPayments: (await db.payments.where('orderId').anyOf(orderIds).toArray()).filter((p) => p.status === 'pending').length,
+  }
+}
+
+/** Step 2 of closing: uses the latest count. Past the tolerance a note is required. The drawer total is left for the next opener. */
+export async function closeShift(shiftId: string, userId: string, note = '') {
+  const sum = await getCloseSummary(shiftId)
+  if (!sum) throw new Error('Count the drawer before closing')
+  if (!sum.within && !note.trim()) throw new Error(`The drawer is ${sum.diff < 0 ? 'short' : 'over'} past the tolerance. Add a note to close.`)
+  return db.transaction('rw', db.shifts, db.auditLog, db.outbox, db.settings, async () => {
+    const shift = await db.shifts.get(shiftId)
+    if (!shift || shift.closedAt) throw new Error('Shift is not open')
+    if (shift.cashierId !== userId) throw new Error('Only the cashier who opened this shift can close it. A supervisor can late-close it.')
+    await db.shifts.update(shiftId, {
+      closedAt: new Date().toISOString(),
+      closedBy: userId,
+      expectedCash: sum.expected,
+      closeCounted: sum.counted,
+      overShort: sum.diff,
+      ...(note.trim() && { overShortNote: note.trim() }),
+      leftInDrawer: sum.counted,
+    })
+    await audit({
+      userId,
+      action: 'shift.close',
+      ref: shiftId,
+      detail: { expected: sum.expected, counted: sum.counted, overShort: sum.diff, counts: sum.counts, note: note.trim() || undefined, heldCarts: sum.heldCarts, pendingPayments: sum.pendingPayments },
+    })
+    return sum
   })
 }

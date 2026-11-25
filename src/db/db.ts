@@ -165,11 +165,16 @@ export type Shift = {
   lateClose?: boolean // closed by a supervisor, not by the cashier's own close
   lateCloseReason?: string
   leftInDrawer?: number // centavos left for the next opener; set by the normal close (1K)
+  expectedCash?: number // opening count + cash sales, worked out when the closing count is submitted
+  closeCounted?: number // the final closing count (centavos)
+  overShort?: number // closeCounted - expectedCash; reported per shift, never netted against other shifts
+  overShortNote?: string // required when past the tolerance
 }
 export type CashCount = {
   id: string
   shiftId: string
   kind: 'open' | 'close'
+  attempt?: number // closing counts: 1, then 2 if the cashier used their one recount. Both are kept.
   countedBy: string
   at: string
   denoms: Denoms
@@ -247,4 +252,7 @@ db.version(9).stores({
 db.version(10).stores({
   queueItems: 'id, orderId, status, station',
   queueEvents: 'id, itemId',
+})
+db.version(11).stores({
+  orders: 'id, businessDayId, businessDate, paidAt, invoiceNo, shiftId',
 })

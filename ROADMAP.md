@@ -70,9 +70,9 @@ Because there is no seed data, you need screens to enter it.
 - [x] Cup labels; allergy notes in loud style
 
 ### 1K — Shift close
-- [ ] Blind drawer count by denomination
-- [ ] Expected vs counted, over/short, note past tolerance
-- [ ] One recount, both counts logged
+- [x] Blind drawer count by denomination
+- [x] Expected vs counted, over/short, note past tolerance
+- [x] One recount, both counts logged
 
 **Demo moments:** senior latte → ₱120 · duplicate GCash reference rejected · blind count with over/short
 
