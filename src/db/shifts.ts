@@ -170,7 +170,11 @@ export async function expectedCash(shiftId: string): Promise<number> {
   const cash = (await db.payments.where('orderId').anyOf(orderIds).toArray()).filter((p) => p.method === 'cash')
   const refunded = (await db.refunds.where('shiftId').equals(shiftId).toArray()).reduce((s, r) => s + r.cashAmount, 0)
   const moved = (await db.cashMovements.where('shiftId').equals(shiftId).toArray()).reduce((s, m) => s + cashEffect(m.kind, m.amount), 0)
-  return shift.openingTotal + cash.reduce((s, p) => s + p.amount, 0) - refunded + moved
+  // A cash deposit is in this drawer even though it is not a sale yet; a deposit refunded in cash goes out of the drawer it is refunded from.
+  const deps = await db.deposits.toArray()
+  const depositIn = deps.filter((d) => d.shiftId === shiftId && d.method === 'cash').reduce((s, d) => s + d.amount, 0)
+  const depositOut = deps.filter((d) => d.status === 'refunded' && d.settled?.shiftId === shiftId && d.settled.method === 'cash').reduce((s, d) => s + d.amount, 0)
+  return shift.openingTotal + cash.reduce((s, p) => s + p.amount, 0) - refunded + moved + depositIn - depositOut
 }
 
 /**

@@ -133,8 +133,8 @@ Because there is no seed data, you need screens to enter it.
 - [x] Split bill (item/seat/even/custom/fraction), superseded bills, walkout
 
 ### 4B — Pre-orders and delivery
-- [ ] Pre-orders with deposits, bulk-order timeline
-- [ ] Delivery channels with per-channel prices and commission %
+- [x] Pre-orders with deposits, bulk-order timeline
+- [x] Delivery channels with per-channel prices and commission %
 
 ### 4C — Customers and loyalty
 - [ ] Customers (consent), stamps/points with reversal on refund, gift cards

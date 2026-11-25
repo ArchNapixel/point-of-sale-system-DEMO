@@ -72,7 +72,7 @@ export default function RefundPanel({ orderId, mode, userId, onDone }: { orderId
           <div className="row">
             <label>Refund to{' '}
               <select value={method} onChange={(e) => setMethod(e.target.value as PayMethod)}>
-                {PAY_METHODS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+                {PAY_METHODS.filter((m) => m.id !== 'deposit').map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
               </select>
             </label>
             {method !== 'cash' && <input aria-label="Refund reference" placeholder="Reference (optional)" value={reference} onChange={(e) => setReference(e.target.value)} />}

@@ -78,7 +78,7 @@ export async function addRound(i: { terminalId: string; userId: string; tableId?
     await db.bills.where('tabId').equals(t.id).and((b) => b.status === 'open').modify({ status: 'superseded' })
     const now = new Date().toISOString()
     const pseudo = { id: t.id, branchId: t.branchId, orderType: 'dine-in' as const, lines: added, paidAt: now, number: 0, name: '', table: t.label }
-    await createQueueItems(pseudo, i.userId, t.id)
+    await createQueueItems(pseudo, i.userId, { tabId: t.id })
     const sale = await deductSale(pseudo, i.userId)
     return { t: next, fresh: true, pseudo: sale }
   })

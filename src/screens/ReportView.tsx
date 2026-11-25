@@ -30,6 +30,7 @@ export default function ReportView({ title, report: r, onPrint }: { title: strin
         <R l={`Refunds (${r.refunds.count})`} r={`-${m(r.refunds.amount)}`} />
         <R l="NET SALES" r={m(r.net)} bold />
         <R l={`Comps (${r.comps.count}, not in sales)`} r={m(r.comps.value)} />
+        {r.deliveryFees > 0 && <R l="Delivery fees (not in sales)" r={m(r.deliveryFees)} />}
         <hr />
         <R l="VATable sales" r={m(r.vat.vatable)} />
         <R l="VAT" r={m(r.vat.vat)} />
@@ -38,10 +39,12 @@ export default function ReportView({ title, report: r, onPrint }: { title: strin
         <R l={`Senior/PWD (${r.seniorPwd.count})`} r={m(r.seniorPwd.reduction)} />
         <hr />
         <strong>Payments</strong>
-        {PAY_METHODS.map((p) => (
+        {PAY_METHODS.filter((p) => ['cash', 'gcash', 'maya', 'card'].includes(p.id) || r.payments[p.id].collected + r.payments[p.id].refunded > 0).map((p) => (
           <R key={p.id} l={`${p.label}  in ${m(r.payments[p.id].collected)}  out ${m(r.payments[p.id].refunded)}`} r={m(r.payments[p.id].net)} />
         ))}
         {r.pending.count > 0 && <R l={`Pending verification (${r.pending.count})`} r={m(r.pending.amount)} />}
+        {r.channels.map((c) => <R key={c.channelId} l={`${c.name} (${c.orders}) less ${m(c.commission)} commission`} r={`owed ${m(c.owed)}`} />)}
+        {(r.deposits.taken > 0 || r.deposits.held > 0) && <R l={`Deposits: taken ${m(r.deposits.taken)}, refunded ${m(r.deposits.refunded)}, kept ${m(r.deposits.forfeited)}`} r={`still held ${m(r.deposits.held)}`} />}
         <hr />
         <strong>Drawer cash</strong>
         <R l="Opening count" r={m(r.cash.opening)} />

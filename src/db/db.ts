@@ -1,4 +1,4 @@
-import Dexie, { type EntityTable } from 'dexie'
+import Dexie, { type EntityTable, type Table } from 'dexie'
 import type { Role } from '../lib/roles'
 import type { Cart, CartLine } from '../lib/cart'
 import type { QueueStatus, Station } from '../lib/queue'
@@ -91,6 +91,11 @@ export type Order = {
   comps?: { lineId: string; name: string; qty: number; value: number; reason: string; note?: string }[] // lines given free on purpose; value = what they would have cost
   compApprovedBy?: string
   idempotencyKey: string // one tap = one order (also covers ₱0 comped orders, which have no payment rows)
+  deliveryFee?: number // a rider fee charged to the customer: paid with the order but never part of sales or discounts
+  channelId?: string // keyed in under a delivery app; sold at its prices and paid by the app later (a receivable)
+  channelName?: string
+  commissionPct?: number // the app's commission when it was sold (a setting per platform, copied here)
+  preOrderId?: string
   tabId?: string // paid from a tab: its drinks were sent and its stock taken when each round was added, so paying does neither again
   billId?: string
   status: 'paid' | 'void' // a voided order keeps its invoice number
@@ -136,6 +141,7 @@ export type QueueItem = {
   rushReason?: string
   createdAt: string
   tabId?: string // made for a tab (orderId is the tab id and orderNumber is 0; the label is the table)
+  preOrderId?: string // made ahead for a pre-order (orderId is the pre-order id and orderNumber is 0; the label is the customer)
   remakeOf?: string // this ticket replaces a spilled or wrong one
   wasted?: boolean // made but not sold: stock counts it as waste (3C)
 }
@@ -276,6 +282,33 @@ export type Bill = {
   id: string; tabId: string; version: number; status: 'open' | 'superseded' | 'closed'
   mode: 'item' | 'seat' | 'even' | 'custom' | 'fraction' | 'whole'; parts: BillPart[]; at: string; by: string
 }
+// A pre-order: a scheduled pickup or delivery, an optional deposit taken now, a prep reminder, the balance at pickup.
+export type PreOrder = {
+  id: string; branchId: string; customerName: string; phone?: string; kind: 'pickup' | 'delivery'; pickupAt: string
+  lines: CartLine[]; deliveryFee?: number; note?: string
+  depositPolicy: 'refund' | 'keep' // what happens to the deposit if it is cancelled; saved on the order when it is taken
+  status: 'booked' | 'preparing' | 'fulfilled' | 'cancelled'
+  createdAt: string; createdBy: string
+  prepStartedAt?: string; orderId?: string
+  cancelled?: { at: string; by: string; reason: string; note?: string; deposit: 'refunded' | 'kept' | 'none'; wasMade: boolean }
+}
+// Money taken before the sale: a liability until the order is paid. Not sales, not in the drawer's sales.
+export type Deposit = {
+  id: string; preOrderId: string; amount: number; method: PayMethod; reference?: string
+  shiftId: string; businessDate: string; at: string; by: string
+  status: 'held' | 'applied' | 'refunded' | 'forfeited'
+  appliedOrderId?: string
+  settled?: { at: string; by: string; shiftId: string; approvedBy?: string; method?: PayMethod }
+}
+// A delivery app. The commission % is a setting per platform. Its prices can differ from the counter's.
+export type Channel = { id: string; name: string; commissionPct: number; active: boolean }
+export type ChannelPrice = { channelId: string; variantId: string; price: number }
+// What a platform paid out against the orders it owed us for. The gap to the expected amount is the commission or a missing order.
+export type ChannelPayout = {
+  id: string; channelId: string; orderIds: string[]; gross: number; expected: number; received: number; reference?: string; at: string; by: string
+}
+// The daily check: how many orders the platform tablet shows against how many were keyed into the POS.
+export type ChannelCheck = { channelId: string; date: string; platformCount: number; posCount: number; by: string; at: string }
 export type InvoicePrint = { id: string; orderId: string; userId: string; at: string; kind: 'original' | 'reprint'; approvedBy?: string }
 export type Payment = {
   id: string
@@ -286,7 +319,7 @@ export type Payment = {
   reference?: string // GCash/Maya reference number, uppercase; a reference can be used once, ever
   approvalCode?: string // card
   last4?: string // card
-  status: 'verified' | 'pending' // e-wallet payments stay pending until a supervisor sees them in the merchant app
+  status: 'verified' | 'pending' | 'receivable' // e-wallet payments stay pending until a supervisor sees them in the merchant app; receivable = a delivery app owes it
   verifiedBy?: string
   verifiedAt?: string
   idempotencyKey: string // unique: a double tap or retry returns the first payment (rule 5)
@@ -386,6 +419,12 @@ export const db = new Dexie('demo-pos') as Dexie & {
   stockCounts: EntityTable<StockCount, 'id'>
   cafeTables: EntityTable<CafeTable, 'id'>
   tabs: EntityTable<Tab, 'id'>
+  preOrders: EntityTable<PreOrder, 'id'>
+  deposits: EntityTable<Deposit, 'id'>
+  channels: EntityTable<Channel, 'id'>
+  channelPrices: Table<ChannelPrice, [string, string]>
+  channelPayouts: EntityTable<ChannelPayout, 'id'>
+  channelChecks: Table<ChannelCheck, [string, string]>
   bills: EntityTable<Bill, 'id'>
   purchaseOrders: EntityTable<PurchaseOrder, 'id'>
   receipts: EntityTable<Receipt, 'id'>
@@ -485,4 +524,12 @@ db.version(23).stores({
   cafeTables: 'id, branchId',
   tabs: 'id, branchId, status, tableId',
   bills: 'id, tabId',
+})
+db.version(24).stores({
+  preOrders: 'id, branchId, pickupAt, status',
+  deposits: 'id, preOrderId, status, shiftId',
+  channels: 'id, name',
+  channelPrices: '[channelId+variantId], channelId',
+  channelPayouts: 'id, channelId',
+  channelChecks: '[channelId+date]',
 })

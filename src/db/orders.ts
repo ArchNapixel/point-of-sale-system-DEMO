@@ -2,6 +2,8 @@ import { db, type DiscountLogEntry, type Order, type Payment } from './db'
 import { consumeApproval } from './approvals'
 import { createQueueItems } from './queue'
 import { settleBillPart } from './tabs'
+import { heldDeposit } from './preorders'
+import { lineTotal } from '../lib/cart'
 import { alertAfterSale, deductSale, syncModifierAvailability } from './stock'
 import { formatInvoiceNo } from '../lib/invoice'
 import { newId } from '../lib/id'
@@ -23,6 +25,7 @@ import { getSellContext } from './shifts'
 export async function payOrder(
   terminalId: string, userId: string, cart: Cart, lines: PayLine[], idempotencyKey: string, buyer?: { name: string; tin: string }, approvals: { discount?: string; comp?: string } = {},
   tab?: { tabId: string; billId: string; partId: string }, // paying one part of a tab's bill: its drinks and stock were taken when each round was sent
+  fulfil?: { preOrderId: string }, // collecting a pre-order: its deposit is applied, and the bar may already have made it
 ) {
   const prior = await db.orders.where('idempotencyKey').equals(idempotencyKey).first()
   if (prior) return { order: prior, payments: await db.payments.where('orderId').equals(prior.id).toArray() }
@@ -35,8 +38,27 @@ export async function payOrder(
     if (!priced.discount && !priced.statutoryLost) throw new Error('Tick the items that belong to the ID holder') // lost = a better price applied instead
   }
   const total = priced.total
-  const { applied, remaining, change } = applyLines(total, lines)
+  // A delivery fee is paid with the order but is never sales and is never discounted.
+  const fee = cart.deliveryFee ?? 0
+  if (!Number.isInteger(fee) || fee < 0) throw new Error('The delivery fee must be whole centavos')
+  const channel = cart.channelId ? await db.channels.get(cart.channelId) : undefined
+  if (cart.channelId && !channel?.active) throw new Error('That delivery app is switched off')
+  const pre = fulfil ? await db.preOrders.get(fulfil.preOrderId) : undefined
+  if (fulfil) {
+    if (!pre || (pre.status !== 'booked' && pre.status !== 'preparing')) throw new Error('This pre-order is not waiting to be collected')
+    const same = cart.lines.length === pre.lines.length && cart.lines.every((l, k) => l.id === pre.lines[k].id) && fee === (pre.deliveryFee ?? 0)
+    if (!same || priced.gross !== pre.lines.reduce((s, l) => s + lineTotal(l), 0)) throw new Error('The order no longer matches the pre-order. Start again from the pre-order.')
+  }
+  const { applied, remaining, change } = applyLines(total + fee, lines)
   if (remaining > 0) throw new Error(`${formatPeso(remaining)} still to pay. The order stays unpaid.`)
+  if (channel ? applied.some((a) => a.method !== 'platform') : applied.some((a) => a.method === 'platform')) {
+    throw new Error(channel ? `${channel.name} orders are paid by the app, not at the till` : 'Delivery app payment is only for delivery app orders')
+  }
+  const held = pre ? await heldDeposit(pre.id) : undefined
+  const depLines = applied.filter((a) => a.method === 'deposit')
+  if (held) {
+    if (depLines.length !== 1 || depLines[0].amount !== held.amount || normRef(depLines[0].reference) !== normRef(held.id)) throw new Error(`Apply the ${formatPeso(held.amount)} deposit to this bill`)
+  } else if (depLines.length > 0) throw new Error('There is no deposit to apply')
   for (const l of applied) {
     const ref = normRef(l.reference)
     if (ref && (await db.payments.where('reference').equals(ref).count()) > 0) throw new Error(`Reference ${ref} was already used on another payment`)
@@ -69,6 +91,9 @@ export async function payOrder(
     }),
     idempotencyKey,
     ...(tab && { tabId: tab.tabId, billId: tab.billId }),
+    ...(fee > 0 && { deliveryFee: fee }),
+    ...(channel && { channelId: channel.id, channelName: channel.name, commissionPct: channel.commissionPct }),
+    ...(pre && { preOrderId: pre.id }),
     status: 'paid',
     paidAt: at,
     cashierId: userId,
@@ -89,7 +114,7 @@ export async function payOrder(
     cashierId: userId,
   }))
   let sale: Awaited<ReturnType<typeof deductSale>> | undefined
-  await db.transaction('rw', [db.orders, db.payments, db.outbox, db.discountLog, db.counters, db.queueItems, db.queueEvents, db.items, db.categories, db.approvals, db.users, db.settings, db.promos, db.promoUses, db.stockMoves, db.recipes, db.ingredients, db.tabs, db.bills], async () => {
+  await db.transaction('rw', [db.orders, db.payments, db.outbox, db.discountLog, db.counters, db.queueItems, db.queueEvents, db.items, db.categories, db.approvals, db.users, db.settings, db.promos, db.promoUses, db.stockMoves, db.recipes, db.ingredients, db.tabs, db.bills, db.preOrders, db.deposits, db.channels], async () => {
     const emp = order.employee
     if (emp) {
       const who = await db.users.get(emp.employeeId)
@@ -113,8 +138,12 @@ export async function payOrder(
     if (compApprover) order.compApprovedBy = compApprover
     order.invoiceNo = formatInvoiceNo(ctx.terminal.invoicePrefix, await nextInvoiceSeq(terminalId))
     await db.orders.add(order)
+    if (held) await db.deposits.update(held.id, { status: 'applied', appliedOrderId: order.id })
+    if (pre) await db.preOrders.update(pre.id, { status: 'fulfilled', orderId: order.id })
     if (tab) {
       await settleBillPart(order, tab.billId, tab.partId, userId)
+    } else if (pre?.status === 'preparing') {
+      // the bar already made it and the ingredients were taken when it started
     } else {
       await createQueueItems(order, userId)
       sale = await deductSale(order, userId) // stock goes down in the same save as the order; it may go negative, never blocks

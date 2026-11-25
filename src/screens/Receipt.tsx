@@ -78,7 +78,8 @@ export default function Receipt({ orderId, onClose }: { orderId: string; onClose
             <div className="center">NON-VAT REGISTERED</div>
           </>
         )}
-        <R l="AMOUNT DUE" r={formatPeso(f.due)} bold />
+        {f.fee > 0 && <R l="Delivery fee (not a sale)" r={formatPeso(f.fee)} />}
+        <R l="AMOUNT DUE" r={formatPeso(f.due + f.fee)} bold />
         {payments.map((p) => (
           <R key={p.id} l={`${PAY_METHODS.find((m) => m.id === p.method)?.label}${p.reference ? ` ref ${p.reference}` : ''}${p.last4 ? ` ····${p.last4}` : ''}`} r={formatPeso(p.tendered)} />
         ))}

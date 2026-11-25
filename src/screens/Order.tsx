@@ -12,7 +12,7 @@ import { checkCode } from '../db/promos'
 import { listActiveUsers } from '../db/users'
 import { waitEstimate } from '../lib/queue'
 import { priceCart, validateStatutory, type StatutoryInput } from '../lib/discount'
-import { PAY_METHODS, applyLines, type PayLine, type PayMethod } from '../lib/payments'
+import { PAY_METHODS, TENDER_METHODS, applyLines, type PayLine, type PayMethod } from '../lib/payments'
 import { parsePesos, pesos } from '../lib/money'
 import {
   ORDER_TYPES, addLine, buildLine, cartCount, cartTotal, compTotal, compValue, changeQty, duplicateLine, emptyCart, lineTotal, removeLine, replaceLine,
@@ -27,6 +27,9 @@ import ItemPicker from './ItemPicker'
 import Receipt from './Receipt'
 import ApprovalPrompt from './ApprovalPrompt'
 import { addRound } from '../db/tabs'
+import { createPreOrder } from '../db/preorders'
+import { channelPriceMap } from '../db/channels'
+import type { PayMethod as DepositMethod } from '../lib/payments'
 import { getLimits } from '../db/approvals'
 import { needsApproval } from '../lib/approval'
 import { audit } from '../db/audit'
@@ -63,8 +66,8 @@ export default function Order() {
 }
 
 /** Takes one or more payment lines (split tender). The key is made once per open panel, so a double tap can't save two orders. */
-function PayPanel({ total, onPay, onCancel }: { total: number; onPay: (lines: PayLine[], key: string, buyer: { name: string; tin: string }) => Promise<unknown>; onCancel: () => void }) {
-  const [lines, setLines] = useState<PayLine[]>([])
+function PayPanel({ total, onPay, onCancel, initialLines }: { total: number; initialLines?: PayLine[]; onPay: (lines: PayLine[], key: string, buyer: { name: string; tin: string }) => Promise<unknown>; onCancel: () => void }) {
+  const [lines, setLines] = useState<PayLine[]>(initialLines ?? [])
   const [method, setMethod] = useState<PayMethod>('cash')
   const [f, setF] = useState({ amount: '', ref: '', code: '', last4: '' })
   const [key] = useState(newId)
@@ -98,7 +101,7 @@ function PayPanel({ total, onPay, onCancel }: { total: number; onPay: (lines: Pa
         </div>
       ))}
       <div className="seg">
-        {PAY_METHODS.map((m) => (
+        {TENDER_METHODS.map((m) => (
           <button key={m.id} aria-pressed={method === m.id} onClick={() => { setMethod(m.id); setF({ amount: '', ref: '', code: '', last4: '' }) }}>{m.label}</button>
         ))}
       </div>
@@ -231,6 +234,64 @@ function SendPanel({ terminalId, userId, cart, onSent, onCancel }: { terminalId:
   )
 }
 
+export const fulfilKey = (terminalId: string) => `pos-fulfil-${terminalId}` // set by the Pre-orders screen when a pre-order is collected
+export type FulfilContext = { preOrderId: string; label: string; depositId?: string; depositAmount?: number }
+function loadFulfil(terminalId: string): FulfilContext | null {
+  try {
+    const raw = localStorage.getItem(fulfilKey(terminalId))
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+/** Save the cart as a pre-order: who, when, an optional deposit, and what happens to the deposit if it is cancelled. */
+function PreOrderPanel({ terminalId, userId, cart, onSaved, onCancel }: { terminalId: string; userId: string; cart: Cart; onSaved: () => void; onCancel: () => void }) {
+  const [f, setF] = useState({ name: cart.name, phone: '', kind: 'pickup' as 'pickup' | 'delivery', at: '', deposit: '', method: 'cash' as DepositMethod, ref: '', policy: 'refund' as 'refund' | 'keep', note: '' })
+  const [key] = useState(newId)
+  const { error, run } = useAction()
+  const set = (patch: Partial<typeof f>) => setF({ ...f, ...patch })
+  return (
+    <div className="card">
+      <h4>Save as a pre-order</h4>
+      <input aria-label="Customer name" placeholder="Customer or company" value={f.name} onChange={(e) => set({ name: e.target.value })} />
+      <input aria-label="Phone" placeholder="Mobile (optional)" value={f.phone} onChange={(e) => set({ phone: e.target.value })} />
+      <div className="row">
+        <select aria-label="Pickup or delivery" value={f.kind} onChange={(e) => set({ kind: e.target.value as 'pickup' | 'delivery' })}><option value="pickup">Pickup</option><option value="delivery">Delivery</option></select>
+        <label>When <input type="datetime-local" value={f.at} onChange={(e) => set({ at: e.target.value })} /></label>
+      </div>
+      <div className="row">
+        <input aria-label="Deposit" size={9} inputMode="decimal" placeholder="Deposit ₱ (optional)" value={f.deposit} onChange={(e) => set({ deposit: e.target.value })} />
+        <select aria-label="Deposit paid by" value={f.method} onChange={(e) => set({ method: e.target.value as DepositMethod })}>
+          {TENDER_METHODS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+        </select>
+        {f.deposit && f.method !== 'cash' && <input aria-label="Deposit reference" placeholder="Reference no." value={f.ref} onChange={(e) => set({ ref: e.target.value })} />}
+      </div>
+      <label>If cancelled, the deposit is{' '}
+        <select value={f.policy} onChange={(e) => set({ policy: e.target.value as 'refund' | 'keep' })}><option value="refund">refunded</option><option value="keep">kept</option></select>
+      </label>
+      <input aria-label="Note" placeholder="Note (optional)" value={f.note} onChange={(e) => set({ note: e.target.value })} />
+      <Err msg={error} />
+      <div className="row">
+        <button onClick={onCancel}>Back</button>
+        <button
+          className="primary"
+          onClick={async () => {
+            const dep = f.deposit.trim() ? parsePesos(f.deposit) : undefined
+            if (dep === null) return void run(() => Promise.reject(new Error('Enter the deposit in pesos, like 1500')))
+            if (await run(() => createPreOrder({
+              terminalId, userId, customerName: f.name, phone: f.phone, kind: f.kind, pickupAt: f.at ? new Date(f.at).toISOString() : '', lines: cart.lines, deliveryFee: cart.deliveryFee, note: f.note,
+              depositPolicy: f.policy, ...(dep ? { deposit: { amount: dep, method: f.method, reference: f.ref } } : {}), idempotencyKey: key,
+            }))) onSaved()
+          }}
+        >
+          Save pre-order
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftId: string; user: User }) {
   const [cart, setCart] = useState<Cart>(() => loadCart(terminalId))
   const [history, setHistory] = useState<Cart[]>([]) // carts before each change to the lines, for Undo
@@ -239,6 +300,11 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
   const [paying, setPaying] = useState(false)
   const [sending, setSending] = useState(false)
   const [bill, setBill] = useState<BillContext | null>(() => loadBill(terminalId))
+  const [fulfil, setFulfil] = useState<FulfilContext | null>(() => loadFulfil(terminalId))
+  const [preSaving, setPreSaving] = useState(false)
+  const channels = useLiveQuery(() => db.channels.filter((c) => c.active).toArray(), [])
+  const channelPrices = useLiveQuery(() => (cart.channelId ? channelPriceMap(cart.channelId) : Promise.resolve(new Map<string, number>())), [cart.channelId])
+  const locked = !!bill || !!fulfil
   const [asking, setAsking] = useState<'discount' | 'comp' | null>(null)
   const [approval, setApproval] = useState<{ id: string; amount: number } | null>(null) // supervisor approval for a big discount
   const [compApproval, setCompApproval] = useState<{ id: string; amount: number } | null>(null) // ... and for a big comp
@@ -257,7 +323,7 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
   const open = useLiveQuery(() => db.queueItems.where('status').anyOf('queued', 'making').toArray(), [])
   const perItem = useLiveQuery(() => getSetting('queueMinutesPerItem'), [])
   const [done, setDone] = useState<{ orderId: string; number: number; change: number; pending: boolean } | null>(null)
-  const menu = useLiveQuery(getSellableMenu, [])
+  const rawMenu = useLiveQuery(getSellableMenu, [])
   const held = useLiveQuery(() => listHeld(terminalId), [terminalId])
   const { error, run } = useAction()
 
@@ -265,7 +331,7 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
     localStorage.setItem(cartKey(terminalId), JSON.stringify(cart))
   }, [cart, terminalId])
 
-  if (!menu || !held || vat === undefined || !open || perItem === undefined || !limits || !promos || empPct === undefined || !staff) return null
+  if (!rawMenu || !channels || !channelPrices || !held || vat === undefined || !open || perItem === undefined || !limits || !promos || empPct === undefined || !staff) return null
   const bar = waitEstimate(open, 'bar', perItem)
   const kitchen = waitEstimate(open, 'kitchen', perItem)
   // One reduction only: Senior/PWD, staff or the best promo, whichever gives the lowest price. Re-worked on every cart change.
@@ -276,6 +342,9 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
   const askComp = needsApproval(user.role, 'comp', comped, limits) && !(compApproval && compApproval.amount >= comped)
   // Ask for whichever approval is missing, then open payment.
   const proceed = (d = askDiscount, c = askComp) => { setDiscounting(false); if (d) setAsking('discount'); else if (c) setAsking('comp'); else { setAsking(null); setPaying(true) } }
+  // At a delivery app's prices, the same menu shows the app's price for each size (add-on prices stay as they are).
+  const menu = channelPrices.size === 0 ? rawMenu : rawMenu.map((c) => ({ ...c, items: c.items.map((i) => ({ ...i, variants: i.variants.map((v) => ({ ...v, price: channelPrices.get(v.id) ?? v.price })) })) }))
+  const fee = cart.deliveryFee ?? 0
   const category = menu.find((c) => c.id === catId) ?? menu[0]
 
   const commit = (next: Cart) => {
@@ -328,8 +397,8 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
       <section>
         <h2>Order</h2>
         {menu.length === 0 && <p>No items are on sale yet. The owner adds them on the Menu tab.</p>}
-        {bill ? (
-          <p>Paying <strong>{bill.label}</strong> from a tab. Its drinks are already made; add more on the tab.</p>
+        {locked ? (
+          <p>{bill ? <>Paying <strong>{bill.label}</strong> from a tab. Its drinks are already made; add more on the tab.</> : <>Collecting pre-order <strong>{fulfil!.label}</strong>. The deposit is applied below; the rest is paid now.</>}</p>
         ) : (
           <>
         <div className="cats">
@@ -371,6 +440,28 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
         ) : (
           <input aria-label="Customer name" placeholder="Customer name (add last initial)" value={cart.name} onChange={(e) => setCart({ ...cart, name: e.target.value })} />
         )}
+        {!locked && (
+          <div className="row">
+            <select
+              aria-label="Sold through"
+              value={cart.channelId ?? ''}
+              onChange={(e) => {
+                const id = e.target.value || undefined
+                const price = new Map<string, number>()
+                for (const c of rawMenu) for (const i of c.items) for (const v of i.variants) price.set(v.id, v.price)
+                // keep the lines, at the new channel's prices (counter prices when it is cleared)
+                run(async () => {
+                  const over = id ? await channelPriceMap(id) : new Map<string, number>()
+                  commit({ ...cart, channelId: id, lines: cart.lines.map((l) => ({ ...l, basePrice: over.get(l.variantId) ?? price.get(l.variantId) ?? l.basePrice })) })
+                })
+              }}
+            >
+              <option value="">Counter</option>
+              {channels.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <input aria-label="Delivery fee" size={9} inputMode="decimal" placeholder="Delivery fee ₱" value={fee ? String(fee / 100) : ''} onChange={(e) => { const v = e.target.value.trim() === '' ? 0 : parsePesos(e.target.value); if (v !== null) setCart({ ...cart, deliveryFee: v || undefined }) }} />
+          </div>
+        )}
         <small>The order number is given when the order is paid.</small>
         <small>
           Bar: {bar.waiting === 0 ? 'no wait' : `about ${bar.minutes} min`}
@@ -397,7 +488,7 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
                   <button onClick={() => setComping('')}>Cancel</button>
                 </div>
               )}
-              {!bill && (
+              {!locked && (
               <div className="row">
                 <button aria-label={`Less ${l.name}`} onClick={() => commit(changeQty(cart, l.id, -1))}>−</button>
                 <span className="qty">{l.qty}</span>
@@ -416,6 +507,7 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
           <span>{cartCount(cart)} item{cartCount(cart) === 1 ? '' : 's'}</span>
           <strong>{formatPeso(priced.total)}</strong>
         </div>
+        {fee > 0 && <div className="row between"><small>Delivery fee (not a sale)</small><strong>{formatPeso(fee)}</strong></div>}
         {priced.discount && (
           <div className="row between">
             <small>{priced.discount.kind === 'senior' ? 'Senior' : 'PWD'} discount ({priced.discount.name}) −{formatPeso(priced.discount.reduction)}</small>
@@ -453,15 +545,18 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
           )
         )}
         <div className="row">
-          {!bill && <button onClick={undo} disabled={history.length === 0}>Undo</button>}
-          {!bill && <button onClick={() => commit({ ...cart, lines: [] })} disabled={cart.lines.length === 0}>Clear</button>}
-          {!bill && <button onClick={hold} disabled={cart.lines.length === 0}>Hold</button>}
-          {!bill && <button onClick={() => { setPaying(false); setSending(true) }} disabled={cart.lines.length === 0}>Send to table</button>}
+          {!locked && <button onClick={undo} disabled={history.length === 0}>Undo</button>}
+          {!locked && <button onClick={() => commit({ ...cart, lines: [] })} disabled={cart.lines.length === 0}>Clear</button>}
+          {!locked && <button onClick={hold} disabled={cart.lines.length === 0}>Hold</button>}
+          {!locked && <button onClick={() => { setPaying(false); setSending(true) }} disabled={cart.lines.length === 0}>Send to table</button>}
+          {!locked && <button onClick={() => { setPaying(false); setPreSaving(true) }} disabled={cart.lines.length === 0}>Pre-order</button>}
+          {fulfil && <button onClick={() => { localStorage.removeItem(fulfilKey(terminalId)); setFulfil(null); setCart(emptyCart()); setPaying(false) }}>Back to pre-orders</button>}
           {bill && <button onClick={() => { localStorage.removeItem(billKey(terminalId)); setBill(null); setCart(emptyCart()); setPaying(false) }}>Back to tab</button>}
           <button onClick={() => { setPaying(false); setDiscounting(true) }} disabled={cart.lines.length === 0}>Senior/PWD</button>
           <button className="primary" onClick={() => proceed()} disabled={cart.lines.length === 0}>Take payment</button>
         </div>
         <Err msg={error} />
+        {preSaving && <PreOrderPanel terminalId={terminalId} userId={user.id} cart={cart} onCancel={() => setPreSaving(false)} onSaved={() => { setCart(emptyCart()); setHistory([]); setPreSaving(false) }} />}
         {sending && <SendPanel terminalId={terminalId} userId={user.id} cart={cart} onCancel={() => setSending(false)} onSent={() => { setCart(emptyCart()); setHistory([]); setSending(false) }} />}
         {discounting && (
           <DiscountPanel cart={cart} vat={vat} onCancel={() => setDiscounting(false)} onApply={(discount) => { setCart({ ...cart, discount }); setDiscounting(false) }} />
@@ -479,13 +574,28 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
             }}
           />
         )}
-        {paying && (
+        {paying && cart.channelId && (
+          <div className="card">
+            <p>Paid by <strong>{channels.find((c) => c.id === cart.channelId)?.name}</strong> later. It is a sale now and a receivable until the app pays out, less its commission.</p>
+            <div className="row">
+              <button onClick={() => setPaying(false)}>Back</button>
+              <button className="primary" onClick={() => run(async () => {
+                const { order } = await payOrder(terminalId, user.id, cart, [{ method: 'platform', amount: priced.total + fee }], newId())
+                setCart(emptyCart()); setHistory([]); setPaying(false)
+                setDone({ orderId: order.id, number: order.number, change: 0, pending: false })
+              })}>Confirm delivery app order</button>
+            </div>
+          </div>
+        )}
+        {paying && !cart.channelId && (
           <PayPanel
-            total={priced.total}
+            total={priced.total + fee}
+            initialLines={fulfil?.depositId ? [{ method: 'deposit', amount: fulfil.depositAmount, reference: fulfil.depositId }] : undefined}
             onCancel={() => setPaying(false)}
             onPay={async (lines, key, buyer) => {
-              const { order, payments, change } = await payOrder(terminalId, user.id, cart, lines, key, buyer, { discount: askDiscount ? undefined : approval?.id, comp: askComp ? undefined : compApproval?.id }, bill ? { tabId: bill.tabId, billId: bill.billId, partId: bill.partId } : undefined)
+              const { order, payments, change } = await payOrder(terminalId, user.id, cart, lines, key, buyer, { discount: askDiscount ? undefined : approval?.id, comp: askComp ? undefined : compApproval?.id }, bill ? { tabId: bill.tabId, billId: bill.billId, partId: bill.partId } : undefined, fulfil ? { preOrderId: fulfil.preOrderId } : undefined)
               if (bill) { localStorage.removeItem(billKey(terminalId)); setBill(null) }
+              if (fulfil) { localStorage.removeItem(fulfilKey(terminalId)); setFulfil(null) }
               setCart(emptyCart())
               setHistory([])
               setApproval(null)

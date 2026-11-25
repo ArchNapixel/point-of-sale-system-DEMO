@@ -7,6 +7,8 @@ export const REASONS = [
   { id: 'foreign-object', label: 'Foreign object' },
   { id: 'duplicate-entry', label: 'Duplicate entry' },
   { id: 'payment-problem', label: 'Payment problem' },
+  { id: 'customer-cancelled', label: 'Customer cancelled' },
+  { id: 'channel-cancel', label: 'Delivery app cancellation (rider or customer)' },
   { id: 'other', label: 'Other (note required)' },
 ] as const
 

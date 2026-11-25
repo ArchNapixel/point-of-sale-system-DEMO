@@ -19,6 +19,8 @@ export const DEFAULT_SETTINGS = {
   autoLockMinutes: 5, // idle time before the screen locks and asks for a PIN; 0 = never
   longShiftHours: 12, // a clock-in running longer than this is flagged for a supervisor to fix
   targetMarginPct: 60, // a drink whose margin (without VAT) falls below this is flagged
+  preOrderLeadMinutes: 30, // the bar is reminded this long before a pre-order is due
+  bulkOrderDrinks: 10, // a pre-order with this many drinks or more is a bulk order on the timeline
   queueMinutesPerItem: 2, // wait estimate at the cashier: minutes per waiting item
   storeName: 'DEMO Café',
   storeTin: '000-000-000-000',

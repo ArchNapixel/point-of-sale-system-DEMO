@@ -78,6 +78,8 @@ function ItemRow({ item, variants, groups, canEdit, userId }: {
   item: Item; variants: Variant[]; groups: ModifierGroup[]; canEdit: boolean; userId: string
 }) {
   const { user } = useAuth()
+  const apps = useLiveQuery(() => db.channels.filter((c) => c.active).toArray(), [])
+  const [remind, setRemind] = useState(false) // a sold-out item must also be switched off on each delivery app
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(item.name)
   const { error, run } = useAction()
@@ -98,7 +100,10 @@ function ItemRow({ item, variants, groups, canEdit, userId }: {
         )}
         {item.soldOut && <span className="badge">SOLD OUT</span>}
         {canSoldOut && item.active && (
-          <button onClick={() => setSoldOut(item.id, !item.soldOut)}>{item.soldOut ? 'Mark available' : 'Mark sold out'}</button>
+          <>
+            <button onClick={() => { setSoldOut(item.id, !item.soldOut); setRemind(!item.soldOut) }}>{item.soldOut ? 'Mark available' : 'Mark sold out'}</button>
+            {remind && apps && apps.length > 0 && <small role="status"> Also turn {item.name} off on {apps.map((a) => a.name).join(' and ')}.</small>}
+          </>
         )}
         {canEdit && !editing && <button onClick={() => setEditing(true)}>Rename</button>}
         {canEdit && <button onClick={() => setMenuActive('items', item.id, !item.active)}>{item.active ? 'Archive' : 'Restore'}</button>}
