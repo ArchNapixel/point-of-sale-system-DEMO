@@ -8,6 +8,7 @@ export const REASONS = [
   { id: 'duplicate-entry', label: 'Duplicate entry' },
   { id: 'payment-problem', label: 'Payment problem' },
   { id: 'customer-cancelled', label: 'Customer cancelled' },
+  { id: 'loyalty-reward', label: 'Loyalty reward (free drink)' },
   { id: 'channel-cancel', label: 'Delivery app cancellation (rider or customer)' },
   { id: 'other', label: 'Other (note required)' },
 ] as const

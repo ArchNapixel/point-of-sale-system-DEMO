@@ -21,6 +21,12 @@ export const DEFAULT_SETTINGS = {
   targetMarginPct: 60, // a drink whose margin (without VAT) falls below this is flagged
   preOrderLeadMinutes: 30, // the bar is reminded this long before a pre-order is due
   bulkOrderDrinks: 10, // a pre-order with this many drinks or more is a bulk order on the timeline
+  loyaltyMode: 'off' as string, // off, stamps (buy 9, the 10th free) or points. Loyalty is money we owe, so every rule is a setting.
+  loyaltyRewardAt: 9, // stamps or points that buy one free drink
+  loyaltyPesosPerPoint: 10, // points mode: one point per this many pesos actually paid
+  loyaltyExpiryDays: 365, // 0 = never
+  loyaltyWarnDays: 30,
+  loyaltyFastEarnPerDay: 6, // a customer earning from more orders than this in one day is flagged
   queueMinutesPerItem: 2, // wait estimate at the cashier: minutes per waiting item
   storeName: 'DEMO Café',
   storeTin: '000-000-000-000',

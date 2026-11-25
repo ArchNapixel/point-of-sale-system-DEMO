@@ -27,7 +27,13 @@ export async function loadReport(scope: Scope): Promise<Report> {
   const deposits = allDeposits.filter((d) => ids.includes(d.shiftId))
   const heldDeposits = allDeposits.filter((d) => d.status === 'held')
   const channelNames = new Map((await db.channels.toArray()).map((c) => [c.id, c.name]))
-  return buildReport({ orders, payments, refunds, moves, shifts: withExpected, refundedPayments, walkouts, deposits, heldDeposits, channelNames })
+  const giftTx = await db.giftCardTx.toArray()
+  const orderIds = new Set(orders.map((o) => o.id))
+  const giftSold = giftTx.filter((t) => t.kind === 'issue' && t.paid && ids.includes(t.paid.shiftId))
+  const giftRedeemed = giftTx.filter((t) => t.kind === 'redeem' && t.orderId && orderIds.has(t.orderId))
+  const activeCards = new Set((await db.giftCards.filter((c) => c.status === 'active').toArray()).map((c) => c.id))
+  const giftOutstanding = giftTx.filter((t) => activeCards.has(t.cardId)).reduce((s, t) => s + t.amount, 0)
+  return buildReport({ orders, payments, refunds, moves, shifts: withExpected, refundedPayments, walkouts, deposits, heldDeposits, channelNames, giftSold, giftRedeemed, giftOutstanding })
 }
 
 /** The Senior/PWD discount log for a scope, newest first (the owner's tax-claim record). */

@@ -96,6 +96,7 @@ export type Order = {
   channelName?: string
   commissionPct?: number // the app's commission when it was sold (a setting per platform, copied here)
   preOrderId?: string
+  customerId?: string // a customer who agreed to be saved: loyalty is earned and used against this
   tabId?: string // paid from a tab: its drinks were sent and its stock taken when each round was added, so paying does neither again
   billId?: string
   status: 'paid' | 'void' // a voided order keeps its invoice number
@@ -309,6 +310,23 @@ export type ChannelPayout = {
 }
 // The daily check: how many orders the platform tablet shows against how many were keyed into the POS.
 export type ChannelCheck = { channelId: string; date: string; platformCount: number; posCount: number; by: string; at: string }
+// A customer profile, saved only with consent (Data Privacy Act). Merging keeps all history; "remove my info" anonymizes.
+export type Customer = {
+  id: string; name: string; phone?: string; consentAt: string; consentBy: string
+  createdAt: string; active: boolean; mergedInto?: string; anonymizedAt?: string
+}
+// Loyalty movements: + earned or corrected up, - redeemed, reversed on a refund or corrected down. The balance is their sum (minus expiry).
+export type LoyaltyEntry = {
+  id: string; customerId: string; kind: 'earn' | 'redeem' | 'reverse' | 'adjust'; amount: number
+  orderId?: string; refundId?: string; at: string; by: string; businessDate: string; note?: string; approvedBy?: string
+}
+// Money paid now for drinks later: a liability until it is used, never a sale.
+export type GiftCard = { id: string; number: string; buyerId?: string; issuedAt: string; issuedBy: string; status: 'active' | 'void'; reissuedAs?: string }
+export type GiftCardTx = {
+  id: string; cardId: string; kind: 'issue' | 'redeem' | 'refund' | 'reissue-out' | 'reissue-in'; amount: number; balanceAfter: number
+  orderId?: string; at: string; by: string
+  paid?: { method: PayMethod; reference?: string; shiftId: string } // the purchase: how it was paid and in whose drawer
+}
 export type InvoicePrint = { id: string; orderId: string; userId: string; at: string; kind: 'original' | 'reprint'; approvedBy?: string }
 export type Payment = {
   id: string
@@ -422,6 +440,10 @@ export const db = new Dexie('demo-pos') as Dexie & {
   preOrders: EntityTable<PreOrder, 'id'>
   deposits: EntityTable<Deposit, 'id'>
   channels: EntityTable<Channel, 'id'>
+  customers: EntityTable<Customer, 'id'>
+  loyaltyLedger: EntityTable<LoyaltyEntry, 'id'>
+  giftCards: EntityTable<GiftCard, 'id'>
+  giftCardTx: EntityTable<GiftCardTx, 'id'>
   channelPrices: Table<ChannelPrice, [string, string]>
   channelPayouts: EntityTable<ChannelPayout, 'id'>
   channelChecks: Table<ChannelCheck, [string, string]>
@@ -532,4 +554,10 @@ db.version(24).stores({
   channelPrices: '[channelId+variantId], channelId',
   channelPayouts: 'id, channelId',
   channelChecks: '[channelId+date]',
+})
+db.version(25).stores({
+  customers: 'id, name, phone',
+  loyaltyLedger: 'id, customerId, orderId, at',
+  giftCards: 'id, &number',
+  giftCardTx: 'id, cardId, orderId',
 })

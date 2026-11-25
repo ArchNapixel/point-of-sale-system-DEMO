@@ -24,7 +24,7 @@ export type CartLine = {
   comp?: { code: string; note: string } // free on purpose: priced at ₱0, the value is kept as a comp
   addedAt?: string // when the item was added: a promo window is judged at this time, not at payment
 }
-export type Cart = { orderType: OrderType; name: string; table: string; lines: CartLine[]; discount?: StatutoryInput; promoCode?: string; employee?: { id: string; name: string }; deliveryFee?: number; channelId?: string }
+export type Cart = { orderType: OrderType; name: string; table: string; lines: CartLine[]; discount?: StatutoryInput; promoCode?: string; employee?: { id: string; name: string }; deliveryFee?: number; channelId?: string; customerId?: string }
 
 // ponytail: a repeat add of the same drink merges into the first line and keeps the first add time, so a re-add after a promo
 // window boundary is judged by the earlier time. Split lines by minute if that ever matters.
@@ -35,7 +35,9 @@ export const lineUnit = (l: CartLine) => l.basePrice + l.mods.reduce((s, m) => s
 export const lineTotal = (l: CartLine) => (l.comp ? 0 : lineUnit(l) * l.qty)
 /** What a comped line would have cost. */
 export const compValue = (l: CartLine) => (l.comp ? lineUnit(l) * l.qty : 0)
-export const compTotal = (c: Cart) => c.lines.reduce((s, l) => s + compValue(l), 0)
+/** Comps that need a manager's limit. A loyalty reward is not one: it is paid for with the customer's stamps or points. */
+export const compTotal = (c: Cart) => c.lines.reduce((s, l) => s + (l.comp?.code === 'loyalty-reward' ? 0 : compValue(l)), 0)
+export const rewardUnits = (c: Cart) => c.lines.reduce((s, l) => s + (l.comp?.code === 'loyalty-reward' ? l.qty : 0), 0)
 export const cartTotal = (c: Cart) => c.lines.reduce((s, l) => s + lineTotal(l), 0)
 export const cartCount = (c: Cart) => c.lines.reduce((s, l) => s + l.qty, 0)
 

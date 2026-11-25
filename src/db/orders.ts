@@ -3,11 +3,13 @@ import { consumeApproval } from './approvals'
 import { createQueueItems } from './queue'
 import { settleBillPart } from './tabs'
 import { heldDeposit } from './preorders'
+import { earnOrder, redeemRewards } from './loyalty'
+import { redeemCard } from './giftcards'
 import { lineTotal } from '../lib/cart'
 import { alertAfterSale, deductSale, syncModifierAvailability } from './stock'
 import { formatInvoiceNo } from '../lib/invoice'
 import { newId } from '../lib/id'
-import { cartCount, compValue, compTotal, type Cart } from '../lib/cart'
+import { cartCount, compValue, compTotal, rewardUnits, type Cart } from '../lib/cart'
 import { checkReason } from '../lib/reasons'
 import { applyLines, normRef, type PayLine } from '../lib/payments'
 import { formatPeso } from '../lib/money'
@@ -55,13 +57,18 @@ export async function payOrder(
     throw new Error(channel ? `${channel.name} orders are paid by the app, not at the till` : 'Delivery app payment is only for delivery app orders')
   }
   const held = pre ? await heldDeposit(pre.id) : undefined
+  const customer = cart.customerId ? await db.customers.get(cart.customerId) : undefined
+  if (cart.customerId && !customer?.active) throw new Error('That customer profile is not active')
+  const rewards = rewardUnits(cart)
+  if (rewards > 0 && !customer) throw new Error('A loyalty reward needs a customer. Look one up first.')
   const depLines = applied.filter((a) => a.method === 'deposit')
   if (held) {
     if (depLines.length !== 1 || depLines[0].amount !== held.amount || normRef(depLines[0].reference) !== normRef(held.id)) throw new Error(`Apply the ${formatPeso(held.amount)} deposit to this bill`)
   } else if (depLines.length > 0) throw new Error('There is no deposit to apply')
   for (const l of applied) {
     const ref = normRef(l.reference)
-    if (ref && (await db.payments.where('reference').equals(ref).count()) > 0) throw new Error(`Reference ${ref} was already used on another payment`)
+    // A transfer or e-wallet reference is used once, ever. Gift cards and deposits are spent in parts, so theirs repeat.
+    if (ref && ['gcash', 'maya', 'transfer'].includes(l.method) && (await db.payments.where('reference').equals(ref).count()) > 0) throw new Error(`Reference ${ref} was already used on another payment`)
   }
   const ctx = await getSellContext(terminalId)
   if (!ctx) throw new Error('Selling needs an open business day and an open shift on this terminal')
@@ -94,6 +101,7 @@ export async function payOrder(
     ...(fee > 0 && { deliveryFee: fee }),
     ...(channel && { channelId: channel.id, channelName: channel.name, commissionPct: channel.commissionPct }),
     ...(pre && { preOrderId: pre.id }),
+    ...(customer && { customerId: customer.id }),
     status: 'paid',
     paidAt: at,
     cashierId: userId,
@@ -114,7 +122,8 @@ export async function payOrder(
     cashierId: userId,
   }))
   let sale: Awaited<ReturnType<typeof deductSale>> | undefined
-  await db.transaction('rw', [db.orders, db.payments, db.outbox, db.discountLog, db.counters, db.queueItems, db.queueEvents, db.items, db.categories, db.approvals, db.users, db.settings, db.promos, db.promoUses, db.stockMoves, db.recipes, db.ingredients, db.tabs, db.bills, db.preOrders, db.deposits, db.channels], async () => {
+  let earned = 0
+  await db.transaction('rw', [db.orders, db.payments, db.outbox, db.discountLog, db.counters, db.queueItems, db.queueEvents, db.items, db.categories, db.approvals, db.users, db.settings, db.promos, db.promoUses, db.stockMoves, db.recipes, db.ingredients, db.tabs, db.bills, db.preOrders, db.deposits, db.channels, db.customers, db.loyaltyLedger, db.giftCards, db.giftCardTx], async () => {
     const emp = order.employee
     if (emp) {
       const who = await db.users.get(emp.employeeId)
@@ -138,6 +147,10 @@ export async function payOrder(
     if (compApprover) order.compApprovedBy = compApprover
     order.invoiceNo = formatInvoiceNo(ctx.terminal.invoicePrefix, await nextInvoiceSeq(terminalId))
     await db.orders.add(order)
+    // Gift cards and loyalty rewards are spent in the same save as the order, so a card can never go below zero or a reward be used twice.
+    for (const g of applied.filter((a) => a.method === 'giftcard')) await redeemCard(g.reference!, g.amount, order.id, userId)
+    if (customer && rewards > 0) await redeemRewards(order.id, customer.id, rewards, userId)
+    if (customer) earned = await earnOrder(order, customer.id, userId)
     if (held) await db.deposits.update(held.id, { status: 'applied', appliedOrderId: order.id })
     if (pre) await db.preOrders.update(pre.id, { status: 'fulfilled', orderId: order.id })
     if (tab) {
@@ -178,7 +191,7 @@ export async function payOrder(
     const d = order.discount
     await audit({ userId, action: 'discount.statutory', ref: order.id, detail: { kind: d.kind, name: d.name, idNumber: d.idNumber, reduction: d.reduction } })
   }
-  return { order, payments, change }
+  return { order, payments, change, earned }
 }
 
 /** Per-terminal series: 1, 2, 3… Runs inside the sale's transaction, so numbers are never skipped or reused. */

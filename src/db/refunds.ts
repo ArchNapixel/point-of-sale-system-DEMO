@@ -7,6 +7,8 @@ import { audit } from './audit'
 import { consumeApproval } from './approvals'
 import { getSellContext } from './shifts'
 import { returnVoided } from './stock'
+import { reverseEarn } from './loyalty'
+import { creditCard } from './giftcards'
 
 /** Each order line with what the customer paid for it (after any Senior/PWD discount) and how much is still refundable. */
 export async function refundableLines(orderId: string) {
@@ -40,7 +42,7 @@ async function record(kind: 'void' | 'refund', i: Common & { picks?: Record<stri
   checkReason(i.reasonCode, i.reasonNote)
   const ctx = await getSellContext(i.terminalId)
   if (!ctx) throw new Error('Refunds come out of an open shift on this terminal. Open the business day and a shift first.')
-  const refund = await db.transaction('rw', [db.orders, db.refunds, db.queueItems, db.payments, db.approvals, db.users, db.settings, db.outbox, db.stockMoves], async () => {
+  const refund = await db.transaction('rw', [db.orders, db.refunds, db.queueItems, db.payments, db.approvals, db.users, db.settings, db.outbox, db.stockMoves, db.loyaltyLedger, db.giftCards, db.giftCardTx, db.customers], async () => {
     const order = await db.orders.get(i.orderId)
     if (!order || order.status !== 'paid') throw new Error('This order is already voided')
     // ponytail: a bill paid from a tab was made when each round was sent, so it is refunded (as waste), never voided.
@@ -80,6 +82,14 @@ async function record(kind: 'void' | 'refund', i: Common & { picks?: Record<stri
       at: new Date().toISOString(), madeBefore: started, idempotencyKey: i.idempotencyKey,
     }
     await db.refunds.add(r)
+    // Stamps or points earned on what is refunded are taken back (all of it for a void).
+    await reverseEarn(order, amount, kind === 'void', id, i.userId)
+    if (kind === 'void') {
+      for (const p of await db.payments.where('orderId').equals(i.orderId).toArray()) if (p.method === 'giftcard') await creditCard(p.reference!, p.amount, i.orderId, i.userId)
+    } else if (i.method === 'giftcard') {
+      if (!i.reference?.trim()) throw new Error('Enter the gift card number to put the refund on')
+      await creditCard(i.reference, amount, i.orderId, i.userId)
+    }
     await db.outbox.add({ id: newId(), table: 'refunds', recordId: r.id, at: r.at, synced: 0 })
     if (kind === 'void') {
       await db.orders.update(i.orderId, { status: 'void' })

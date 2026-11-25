@@ -1,4 +1,4 @@
-import type { CashMovement, Deposit, Order, Payment, Refund, Shift, Tab } from '../db/db'
+import type { CashMovement, Deposit, GiftCardTx, Order, Payment, Refund, Shift, Tab } from '../db/db'
 import { invoiceFigures } from './invoice'
 import type { PayMethod } from './payments'
 
@@ -16,6 +16,8 @@ export type Report = {
   comps: { count: number; value: number }
   noSales: number
   walkouts: { count: number; amount: number } // tables that left without paying: a loss, kept apart from voids
+  loyaltyRewards: { count: number; value: number } // free drinks given for stamps or points: loyalty expense, kept apart from comps
+  giftCards: { sold: number; redeemed: number; outstanding: number } // sold = money taken for cards (a liability, not sales); outstanding = still on cards
   deliveryFees: number // rider fees charged to customers: collected, but never in sales
   channels: { channelId: string; name: string; orders: number; sales: number; commission: number; owed: number }[] // delivery app sales, the commission and what the app still owes (net)
   deposits: { taken: number; refunded: number; forfeited: number; held: number } // money taken before a sale: a liability until the order is paid
@@ -27,12 +29,15 @@ export type Report = {
   shifts: ShiftRow[] // each shift stands on its own: over and short are never netted against each other
 }
 
-const METHODS: PayMethod[] = ['cash', 'gcash', 'maya', 'card', 'transfer', 'deposit', 'platform']
+const METHODS: PayMethod[] = ['cash', 'gcash', 'maya', 'card', 'transfer', 'deposit', 'platform', 'giftcard']
 const sum = <T,>(xs: T[], f: (x: T) => number) => xs.reduce((s, x) => s + f(x), 0)
 
 export function buildReport(i: {
   orders: Order[]; payments: Payment[]; refunds: Refund[]; moves: CashMovement[]; shifts: (Shift & { expectedCash: number })[]
   walkouts?: Tab[]
+  giftSold?: GiftCardTx[]
+  giftRedeemed?: GiftCardTx[]
+  giftOutstanding?: number
   deposits?: Deposit[] // deposits taken, refunded or forfeited in scope
   heldDeposits?: Deposit[] // every deposit still owed to customers, whenever it was taken
   channelNames?: Map<string, string>
@@ -66,7 +71,9 @@ export function buildReport(i: {
     voids: { count: voids.length, amount: sum(voids, (r) => r.amount) },
     refunds: { count: plain.length, amount: sum(plain, (r) => r.amount) },
     net: gross - d.seniorPwd - d.promo - d.staff - sum(refunds, (r) => r.amount),
-    comps: { count: sum(live, (o) => o.comps?.length ?? 0), value: sum(live, (o) => sum(o.comps ?? [], (c) => c.value)) },
+    comps: { count: sum(live, (o) => (o.comps ?? []).filter((c) => c.reason !== 'loyalty-reward').length), value: sum(live, (o) => sum((o.comps ?? []).filter((c) => c.reason !== 'loyalty-reward'), (c) => c.value)) },
+    loyaltyRewards: { count: sum(live, (o) => (o.comps ?? []).filter((c) => c.reason === 'loyalty-reward').length), value: sum(live, (o) => sum((o.comps ?? []).filter((c) => c.reason === 'loyalty-reward'), (c) => c.value)) },
+    giftCards: { sold: sum(i.giftSold ?? [], (t) => t.amount), redeemed: sum(i.giftRedeemed ?? [], (t) => -t.amount), outstanding: i.giftOutstanding ?? 0 },
     noSales: moves.filter((m) => m.kind === 'no-sale').length,
     deliveryFees: sum(live, (o) => o.deliveryFee ?? 0),
     channels: [...new Set(live.flatMap((o) => (o.channelId ? [o.channelId] : [])))].map((id) => {

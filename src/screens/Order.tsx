@@ -15,7 +15,7 @@ import { priceCart, validateStatutory, type StatutoryInput } from '../lib/discou
 import { PAY_METHODS, TENDER_METHODS, applyLines, type PayLine, type PayMethod } from '../lib/payments'
 import { parsePesos, pesos } from '../lib/money'
 import {
-  ORDER_TYPES, addLine, buildLine, cartCount, cartTotal, compTotal, compValue, changeQty, duplicateLine, emptyCart, lineTotal, removeLine, replaceLine,
+  ORDER_TYPES, addLine, buildLine, cartCount, cartTotal, compTotal, compValue, rewardUnits, changeQty, duplicateLine, emptyCart, lineTotal, removeLine, replaceLine,
   type Cart, type CartLine, type OrderType,
 } from '../lib/cart'
 import { quote } from '../lib/modifierPricing'
@@ -27,6 +27,8 @@ import ItemPicker from './ItemPicker'
 import Receipt from './Receipt'
 import ApprovalPrompt from './ApprovalPrompt'
 import { addRound } from '../db/tabs'
+import CustomerPicker from './CustomerPicker'
+import { customerBalance } from '../db/loyalty'
 import { createPreOrder } from '../db/preorders'
 import { channelPriceMap } from '../db/channels'
 import type { PayMethod as DepositMethod } from '../lib/payments'
@@ -112,7 +114,8 @@ function PayPanel({ total, onPay, onCancel, initialLines }: { total: number; ini
         </div>
       )}
       {field(method === 'cash' ? 'Cash tendered' : `Amount (blank = ${formatPeso(balance)})`, 'amount', { inputMode: 'decimal', autoFocus: true })}
-      {(method === 'gcash' || method === 'maya') && field('Reference number', 'ref')}
+      {(method === 'gcash' || method === 'maya' || method === 'transfer') && field('Reference number', 'ref')}
+      {method === 'giftcard' && field('Gift card number (GC-1234-5678)', 'ref')}
       {method === 'card' && <>{field('Approval code', 'code')}{field('Last 4 digits', 'last4', { inputMode: 'numeric', maxLength: 4 })}</>}
       <p className="change" style={{ fontSize: '2rem' }}>
         {!result ? '' : result.remaining > 0 ? `Still to pay ${formatPeso(result.remaining)}` : `Change ${formatPeso(result.change)}`}
@@ -302,6 +305,12 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
   const [bill, setBill] = useState<BillContext | null>(() => loadBill(terminalId))
   const [fulfil, setFulfil] = useState<FulfilContext | null>(() => loadFulfil(terminalId))
   const [preSaving, setPreSaving] = useState(false)
+  const [pickingCustomer, setPickingCustomer] = useState(false)
+  const cust = useLiveQuery(async () => {
+    const c = cart.customerId ? await db.customers.get(cart.customerId) : undefined
+    return c ? { c, ...(await customerBalance(c.id)) } : null
+  }, [cart.customerId, cart.lines.length])
+  const prog = useLiveQuery(() => import('../db/loyalty').then((m) => m.getProgramme()), [])
   const channels = useLiveQuery(() => db.channels.filter((c) => c.active).toArray(), [])
   const channelPrices = useLiveQuery(() => (cart.channelId ? channelPriceMap(cart.channelId) : Promise.resolve(new Map<string, number>())), [cart.channelId])
   const locked = !!bill || !!fulfil
@@ -322,7 +331,7 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
   const [pickingStaff, setPickingStaff] = useState(false)
   const open = useLiveQuery(() => db.queueItems.where('status').anyOf('queued', 'making').toArray(), [])
   const perItem = useLiveQuery(() => getSetting('queueMinutesPerItem'), [])
-  const [done, setDone] = useState<{ orderId: string; number: number; change: number; pending: boolean } | null>(null)
+  const [done, setDone] = useState<{ orderId: string; number: number; change: number; pending: boolean; earned: number } | null>(null)
   const rawMenu = useLiveQuery(getSellableMenu, [])
   const held = useLiveQuery(() => listHeld(terminalId), [terminalId])
   const { error, run } = useAction()
@@ -462,6 +471,21 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
             <input aria-label="Delivery fee" size={9} inputMode="decimal" placeholder="Delivery fee ₱" value={fee ? String(fee / 100) : ''} onChange={(e) => { const v = e.target.value.trim() === '' ? 0 : parsePesos(e.target.value); if (v !== null) setCart({ ...cart, deliveryFee: v || undefined }) }} />
           </div>
         )}
+        {!locked && (
+          pickingCustomer ? (
+            <CustomerPicker onCancel={() => setPickingCustomer(false)} onPick={(c) => { setCart({ ...cart, customerId: c.id, name: cart.name || c.name }); setPickingCustomer(false) }} />
+          ) : cust ? (
+            <div className="row between">
+              <small>
+                {cust.c.name}{cust.programme.mode !== 'off' && ` · ${cust.balance} ${cust.programme.mode === 'points' ? 'points' : 'stamps'}${cust.balance >= cust.programme.rewardAt ? ' · FREE DRINK AVAILABLE' : ''}`}
+                {cust.expiringSoon.length > 0 && ` · ${cust.expiringSoon.reduce((s, x) => s + x.amount, 0)} expire by ${new Date(cust.expiringSoon[0].expiresAt).toLocaleDateString('en-PH')}`}
+              </small>
+              <button onClick={() => setCart({ ...cart, customerId: undefined, lines: cart.lines.map((l) => (l.comp?.code === 'loyalty-reward' ? { ...l, comp: undefined } : l)) })}>Remove</button>
+            </div>
+          ) : (
+            <button onClick={() => setPickingCustomer(true)}>Customer / loyalty</button>
+          )
+        )}
         <small>The order number is given when the order is paid.</small>
         <small>
           Bar: {bar.waiting === 0 ? 'no wait' : `about ${bar.minutes} min`}
@@ -496,7 +520,10 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
                 <button onClick={() => editLine(l)}>Edit</button>
                 <button onClick={() => commit(duplicateLine(cart, l.id, newId()))}>Duplicate</button>
                 <button onClick={() => { run(() => audit({ userId: user.id, action: 'line.void', detail: { name: l.name, qty: l.qty, amount: lineTotal(l) } })); commit(removeLine(cart, l.id)) }}>Remove</button>
-                <button onClick={() => { if (l.comp) commit({ ...cart, lines: cart.lines.map((x) => (x.id === l.id ? { ...x, comp: undefined } : x)) }); else { setReason(NO_REASON); setComping(l.id) } }}>{l.comp ? 'Undo comp' : 'Comp'}</button>
+                <button onClick={() => { if (l.comp) commit({ ...cart, lines: cart.lines.map((x) => (x.id === l.id ? { ...x, comp: undefined } : x)) }); else { setReason(NO_REASON); setComping(l.id) } }}>{l.comp ? (l.comp.code === 'loyalty-reward' ? 'Undo reward' : 'Undo comp') : 'Comp'}</button>
+                {!l.comp && cust && cust.programme.mode !== 'off' && Math.floor(cust.balance / cust.programme.rewardAt) > rewardUnits(cart) && l.qty === 1 && (
+                  <button onClick={() => commit({ ...cart, lines: cart.lines.map((x) => (x.id === l.id ? { ...x, comp: { code: 'loyalty-reward', note: '' } } : x)) })}>Free drink (reward)</button>
+                )}
               </div>
               )}
             </li>
@@ -582,7 +609,7 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
               <button className="primary" onClick={() => run(async () => {
                 const { order } = await payOrder(terminalId, user.id, cart, [{ method: 'platform', amount: priced.total + fee }], newId())
                 setCart(emptyCart()); setHistory([]); setPaying(false)
-                setDone({ orderId: order.id, number: order.number, change: 0, pending: false })
+                setDone({ orderId: order.id, number: order.number, change: 0, pending: false, earned: 0 })
               })}>Confirm delivery app order</button>
             </div>
           </div>
@@ -593,7 +620,7 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
             initialLines={fulfil?.depositId ? [{ method: 'deposit', amount: fulfil.depositAmount, reference: fulfil.depositId }] : undefined}
             onCancel={() => setPaying(false)}
             onPay={async (lines, key, buyer) => {
-              const { order, payments, change } = await payOrder(terminalId, user.id, cart, lines, key, buyer, { discount: askDiscount ? undefined : approval?.id, comp: askComp ? undefined : compApproval?.id }, bill ? { tabId: bill.tabId, billId: bill.billId, partId: bill.partId } : undefined, fulfil ? { preOrderId: fulfil.preOrderId } : undefined)
+              const { order, payments, change, earned } = await payOrder(terminalId, user.id, cart, lines, key, buyer, { discount: askDiscount ? undefined : approval?.id, comp: askComp ? undefined : compApproval?.id }, bill ? { tabId: bill.tabId, billId: bill.billId, partId: bill.partId } : undefined, fulfil ? { preOrderId: fulfil.preOrderId } : undefined)
               if (bill) { localStorage.removeItem(billKey(terminalId)); setBill(null) }
               if (fulfil) { localStorage.removeItem(fulfilKey(terminalId)); setFulfil(null) }
               setCart(emptyCart())
@@ -601,7 +628,7 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
               setApproval(null)
               setCompApproval(null)
               setPaying(false)
-              setDone({ orderId: order.id, number: order.number, change: change ?? 0, pending: payments.some((p) => p.status === 'pending') })
+              setDone({ orderId: order.id, number: order.number, change: change ?? 0, pending: payments.some((p) => p.status === 'pending'), earned: earned ?? 0 })
             }}
           />
         )}
@@ -609,6 +636,7 @@ function OrderScreen({ terminalId, shiftId, user }: { terminalId: string; shiftI
           <div className="card" role="status">
             <p>Order #{done.number} paid</p>
             <p className="change">Change {formatPeso(done.change)}</p>
+            {done.earned > 0 && <p>Earned {done.earned} {prog?.mode === 'points' ? 'point(s)' : 'stamp(s)'}.</p>}
             {done.pending && <p>E-wallet payment is pending. A supervisor verifies it in the Orders tab once it shows in the merchant app.</p>}
             <button onClick={() => setShowInvoice(true)}>Invoice</button>
             <button onClick={() => { setDone(null); setShowInvoice(false) }}>Next order</button>

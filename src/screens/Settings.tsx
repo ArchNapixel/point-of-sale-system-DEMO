@@ -20,6 +20,12 @@ const FIELDS: { key: SettingKey; label: string; kind: 'bool' | 'pesos' | 'int' |
   { key: 'targetMarginPct', label: 'Target margin per drink (%)', kind: 'int', min: 0, max: 100 },
   { key: 'preOrderLeadMinutes', label: 'Remind the bar before a pre-order (minutes)', kind: 'int', min: 0, max: 240 },
   { key: 'bulkOrderDrinks', label: 'Bulk order from this many drinks', kind: 'int', min: 2, max: 500 },
+  { key: 'loyaltyMode', label: 'Loyalty: off, stamps or points', kind: 'text' },
+  { key: 'loyaltyRewardAt', label: 'Loyalty: stamps or points for one free drink', kind: 'int', min: 1, max: 100000 },
+  { key: 'loyaltyPesosPerPoint', label: 'Loyalty (points): pesos paid per point', kind: 'int', min: 1, max: 100000 },
+  { key: 'loyaltyExpiryDays', label: 'Loyalty: days until unused stamps or points expire (0 = never)', kind: 'int', min: 0, max: 3650 },
+  { key: 'loyaltyWarnDays', label: 'Loyalty: warn this many days before they expire', kind: 'int', min: 0, max: 365 },
+  { key: 'loyaltyFastEarnPerDay', label: 'Loyalty: flag a customer earning from more orders than this a day', kind: 'int', min: 1, max: 1000 },
   { key: 'queueMinutesPerItem', label: 'Wait estimate: minutes per queued item', kind: 'int', min: 1, max: 60 },
   { key: 'storeName', label: 'Store name (on invoices)', kind: 'text' },
   { key: 'storeTin', label: 'Store TIN', kind: 'text' },
@@ -55,8 +61,12 @@ export default function Settings() {
         await setSetting(key, raw as boolean)
         continue
       }
+      if (key === 'loyaltyMode' && !['off', 'stamps', 'points'].includes(String(raw).trim().toLowerCase())) {
+        setMsg('Loyalty must be off, stamps or points')
+        return
+      }
       if (kind === 'text') {
-        await setSetting(key, String(raw).trim())
+        await setSetting(key, key === 'loyaltyMode' ? String(raw).trim().toLowerCase() : String(raw).trim())
         continue
       }
       const n = Number(raw)

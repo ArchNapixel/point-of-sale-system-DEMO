@@ -137,8 +137,8 @@ Because there is no seed data, you need screens to enter it.
 - [x] Delivery channels with per-channel prices and commission %
 
 ### 4C — Customers and loyalty
-- [ ] Customers (consent), stamps/points with reversal on refund, gift cards
-- [ ] Data-privacy delete/anonymize
+- [x] Customers (consent), stamps/points with reversal on refund, gift cards
+- [x] Data-privacy delete/anonymize
 
 ### 4D — Offline and sync
 - [ ] Outbox sync to the Hono API + Neon, idempotent, no duplicates

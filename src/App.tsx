@@ -8,6 +8,7 @@ import Waste from './screens/Waste'
 import Tabs from './screens/Tabs'
 import PreOrders from './screens/PreOrders'
 import Channels from './screens/Channels'
+import Customers from './screens/Customers'
 import { negativeStock } from './db/stock'
 import { useAuth } from './auth'
 import Login from './Login'
@@ -24,7 +25,7 @@ import Queue from './screens/Queue'
 import Promos from './screens/Promos'
 import Reports from './screens/Reports'
 
-type Tab = 'shift' | 'order' | 'tabs' | 'preorders' | 'orders' | 'queue' | 'promos' | 'reports' | 'channels' | 'clock' | 'inventory' | 'waste' | 'menu' | 'setup' | 'settings'
+type Tab = 'shift' | 'order' | 'tabs' | 'preorders' | 'customers' | 'orders' | 'queue' | 'promos' | 'reports' | 'channels' | 'clock' | 'inventory' | 'waste' | 'menu' | 'setup' | 'settings'
 
 export default function App() {
   const { user, ready, locked, lock, logout } = useAuth()
@@ -52,6 +53,7 @@ export default function App() {
   if (can(user.role, 'sell')) tabs.push({ id: 'order', label: 'Order' })
   if (can(user.role, 'sell')) tabs.push({ id: 'tabs', label: 'Tabs' })
   if (can(user.role, 'sell')) tabs.push({ id: 'preorders', label: 'Pre-orders' })
+  if (can(user.role, 'sell')) tabs.push({ id: 'customers', label: 'Customers' })
   if (can(user.role, 'sell')) tabs.push({ id: 'orders', label: 'Orders' })
   if (can(user.role, 'viewQueue')) tabs.push({ id: 'queue', label: 'Queue' })
   if (can(user.role, 'editPrices') || can(user.role, 'markSoldOut')) tabs.push({ id: 'menu', label: 'Menu' })
@@ -88,6 +90,7 @@ export default function App() {
         {current === 'tabs' && <Tabs onGo={() => setTab('order')} />}
         {current === 'preorders' && <PreOrders onGo={() => setTab('order')} />}
         {current === 'channels' && <Channels />}
+        {current === 'customers' && <Customers />}
         {current === 'orders' && <Orders />}
         {current === 'queue' && <Queue />}
         {current === 'promos' && <Promos />}

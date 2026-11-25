@@ -34,10 +34,11 @@ export default function Receipt({ orderId, onClose }: { orderId: string; onClose
     const store = { name: await getSetting('storeName'), tin: await getSetting('storeTin'), address: await getSetting('storeAddress') }
     const v = order.status === 'void' ? await db.refunds.where('orderId').equals(orderId).first() : undefined
     const voided = v && { reasonLabel: REASONS.find((r) => r.id === v.reasonCode)?.label ?? v.reasonCode, approver: (await db.users.get(v.approvedBy))?.name ?? '' }
-    return { order, payments, cashier, prints, store, voided }
+    const gift = await Promise.all((await db.giftCardTx.where('orderId').equals(orderId).filter((t) => t.kind === 'redeem').toArray()).map(async (t) => ({ ...t, number: (await db.giftCards.get(t.cardId))?.number ?? '' })))
+    return { order, payments, cashier, prints, store, voided, gift }
   }, [orderId])
   if (!data || !user) return null
-  const { order: o, payments, cashier, prints, store, voided } = data
+  const { order: o, payments, cashier, prints, store, voided, gift } = data
   const f = invoiceFigures(o)
   const otherLabel = o.promo ? `Promo: ${o.promo.name}` : o.employee ? `Staff discount (${o.employee.name})` : ''
   const d = o.discount
@@ -84,6 +85,7 @@ export default function Receipt({ orderId, onClose }: { orderId: string; onClose
           <R key={p.id} l={`${PAY_METHODS.find((m) => m.id === p.method)?.label}${p.reference ? ` ref ${p.reference}` : ''}${p.last4 ? ` ····${p.last4}` : ''}`} r={formatPeso(p.tendered)} />
         ))}
         {change > 0 && <R l="Change" r={formatPeso(change)} />}
+        {gift.map((g) => <R key={g.id} l={`Gift card ${g.number}: balance`} r={formatPeso(g.balanceAfter)} />)}
         {d && (
           <>
             <hr />

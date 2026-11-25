@@ -30,6 +30,8 @@ export default function ReportView({ title, report: r, onPrint }: { title: strin
         <R l={`Refunds (${r.refunds.count})`} r={`-${m(r.refunds.amount)}`} />
         <R l="NET SALES" r={m(r.net)} bold />
         <R l={`Comps (${r.comps.count}, not in sales)`} r={m(r.comps.value)} />
+        {r.loyaltyRewards.count > 0 && <R l={`Loyalty rewards (${r.loyaltyRewards.count}, not in sales)`} r={m(r.loyaltyRewards.value)} />}
+        {(r.giftCards.sold > 0 || r.giftCards.redeemed > 0 || r.giftCards.outstanding > 0) && <R l={`Gift cards: sold ${m(r.giftCards.sold)}, spent ${m(r.giftCards.redeemed)} (not sales)`} r={`on cards ${m(r.giftCards.outstanding)}`} />}
         {r.deliveryFees > 0 && <R l="Delivery fees (not in sales)" r={m(r.deliveryFees)} />}
         <hr />
         <R l="VATable sales" r={m(r.vat.vatable)} />
