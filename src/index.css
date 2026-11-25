@@ -56,14 +56,58 @@ button.allergy[aria-pressed='true'] { background: #b00020; }
 .archived-card { opacity: 0.6; }
 [role='alert'] { color: #b00020; margin: 0.25rem 0; }
 
-.login { max-width: 22rem; margin: 3rem auto; padding: 0 1rem; }
-.login form { display: grid; gap: 0.75rem; }
-.login label { display: grid; gap: 0.25rem; }
-.login input { font-size: 1.25rem; padding: 0.6rem; }
-.login button { font-size: 1.1rem; padding: 0.75rem 1rem; min-height: 44px; }
-.users { list-style: none; padding: 0; display: grid; gap: 0.5rem; }
-.users button { width: 100%; text-align: left; }
-.users small { opacity: 0.6; margin-left: 0.5rem; }
+/* Login: neutral surface, one primary colour for actions, red only for errors. */
+.login {
+  --ink: #1f2933; --muted: #52606d; --line: #d9dee3; --surface: #f4f5f7;
+  --primary: #1f5f4a; --primary-hover: #174a39; --primary-tint: #e6f0ec;
+  --danger: #b42318; --danger-tint: #fef3f2; --focus: #2563eb;
+  max-width: none; min-height: 100vh; box-sizing: border-box; margin: 0;
+  padding: 3rem 1rem; background: var(--surface); color: var(--ink);
+  display: flex; justify-content: center; align-items: flex-start;
+}
+.login-card {
+  width: 100%; max-width: 24rem; background: #fff; border: 1px solid var(--line);
+  border-radius: 12px; padding: 2rem 1.5rem; box-shadow: 0 1px 3px rgb(16 24 40 / 0.08);
+}
+.login h1 { margin: 0 0 1.5rem; font-size: 0.875rem; letter-spacing: 0.08em; color: var(--muted); text-align: center; }
+.login h2 { margin: 0; font-size: 1.5rem; line-height: 1.25; }
+.login .hint { margin: 0.25rem 0 1.25rem; color: var(--muted); }
+.login form { display: grid; gap: 1rem; }
+.login label { display: grid; gap: 0.375rem; font-weight: 600; font-size: 0.9375rem; }
+.login input {
+  font-size: 1.125rem; padding: 0.625rem 0.75rem; min-height: 48px; border: 1px solid #9aa5b1;
+  border-radius: 8px; color: var(--ink); background: #fff;
+}
+.login input[aria-invalid='true'] { border-color: var(--danger); }
+.login button {
+  font: inherit; font-size: 1rem; min-height: 48px; padding: 0.75rem 1rem; border-radius: 8px;
+  border: 1px solid var(--line); background: #fff; color: var(--ink); cursor: pointer;
+}
+.login button:hover:not(:disabled) { background: var(--surface); }
+.login :is(button, input):focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.login button.primary { background: var(--primary); border-color: var(--primary); color: #fff; font-weight: 600; }
+.login button.primary:hover:not(:disabled) { background: var(--primary-hover); }
+.login button:disabled { opacity: 0.45; cursor: not-allowed; }
+.login button.link { justify-self: start; border: 0; padding: 0.5rem 0; min-height: 44px; color: var(--primary); font-weight: 600; background: none; }
+.login [role='alert'] { margin: 0; padding: 0.625rem 0.75rem; border-radius: 8px; color: var(--danger); background: var(--danger-tint); font-weight: 600; }
+
+.users { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.5rem; }
+.users button { width: 100%; display: flex; align-items: center; gap: 0.875rem; text-align: left; padding: 0.625rem 0.875rem; min-height: 64px; }
+.users .who { flex: 1; display: grid; gap: 0.125rem; }
+.users .name { font-weight: 600; font-size: 1.0625rem; }
+.login .role { font-size: 0.8125rem; color: var(--muted); text-transform: capitalize; }
+.users .chev { font-size: 1.5rem; color: var(--muted); }
+.avatar {
+  flex: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--primary-tint); color: var(--primary); font-weight: 700;
+}
+.avatar.lg { width: 56px; height: 56px; font-size: 1.25rem; }
+.selected { display: grid; justify-items: center; gap: 0.375rem; text-align: center; }
+
+.login input.pin { text-align: center; font-size: 1.75rem; letter-spacing: 0.5em; padding-left: 1.25rem; }
+.keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
+.login .keypad button { min-height: 60px; font-size: 1.5rem; font-variant-numeric: tabular-nums; }
+.login .keypad button[aria-label] { font-size: 1rem; color: var(--muted); }
 
 .receipt { max-width: 22rem; font-family: ui-monospace, Consolas, monospace; font-size: 0.85rem; }
 .receipt .rrow { display: flex; justify-content: space-between; gap: 0.5rem; }
