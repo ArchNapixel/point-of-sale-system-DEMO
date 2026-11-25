@@ -7,7 +7,7 @@ import { getSetting } from './settings'
 import { audit } from './audit'
 import { deductionsForLine } from './recipes'
 
-type NewMove = Pick<StockMove, 'ingredientId' | 'branchId' | 'kind' | 'qty' | 'userId'> & Partial<Pick<StockMove, 'ref' | 'reason' | 'note' | 'recipeVersions' | 'pairId'>>
+type NewMove = Pick<StockMove, 'ingredientId' | 'branchId' | 'kind' | 'qty' | 'userId'> & Partial<Pick<StockMove, 'ref' | 'reason' | 'note' | 'recipeVersions' | 'pairId' | 'unitCostMilli'>>
 
 /** Writes movements (append-only). Returns the ingredients this pushed below zero, so the caller can alert. Call inside a transaction on stockMoves. */
 async function write(moves: NewMove[], at = new Date()) {
@@ -22,6 +22,7 @@ async function write(moves: NewMove[], at = new Date()) {
   return { rows, crossed }
 }
 
+export { write as writeMoves, alertNegative }
 const alertNegative = (crossed: { ingredientId: string; branchId: string; level: number }[], userId: string) =>
   Promise.all(crossed.map((c) => audit({ userId, action: 'stock.negative', ref: c.ingredientId, detail: { branchId: c.branchId, level: c.level } })))
 
@@ -42,9 +43,10 @@ export async function negativeStock(branchId?: string) {
  */
 export async function deductSale(order: Order, userId: string) {
   const moves: NewMove[] = []
+  const costs = new Map((await db.ingredients.toArray()).map((i) => [i.id, i.avgCostMilli]))
   for (const l of order.lines) {
     const d = await deductionsForLine(l, order.orderType)
-    for (const u of d.uses) moves.push({ ingredientId: u.ingredientId, branchId: order.branchId, kind: 'sale', qty: -u.qty, userId, ref: order.id, recipeVersions: d.versions })
+    for (const u of d.uses) moves.push({ ingredientId: u.ingredientId, branchId: order.branchId, kind: 'sale', qty: -u.qty, userId, ref: order.id, recipeVersions: d.versions, ...(costs.get(u.ingredientId) && { unitCostMilli: costs.get(u.ingredientId) }) })
   }
   return write(moves, new Date(order.paidAt))
 }

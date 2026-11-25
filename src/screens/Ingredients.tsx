@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useAuth } from '../auth'
 import { db, type Ingredient } from '../db/db'
+import { setPar } from '../db/purchasing'
 import { addUnit, createIngredient, renameIngredient, setIngredientActive, setUnitActive, setUnitFactor } from '../db/ingredients'
 import { BASE_UNITS, toBase, type BaseUnit } from '../lib/units'
 import { can } from '../lib/roles'
@@ -40,6 +41,8 @@ function IngredientCard({ ing, canEdit, userId }: { ing: Ingredient; canEdit: bo
   const [factor, setFactor] = useState('')
   const [rename, setRename] = useState<string | null>(null)
   const [edit, setEdit] = useState<{ unit: string; factor: string } | null>(null)
+  const [parQty, setParQty] = useState('')
+  const [parUnit, setParUnit] = useState('')
   const [try_, setTry] = useState({ qty: '1', unit: '' })
   const { error, run } = useAction()
   const tryUnit = try_.unit || ing.units.find((u) => u.active)?.name || ing.baseUnit
@@ -89,6 +92,17 @@ function IngredientCard({ ing, canEdit, userId }: { ing: Ingredient; canEdit: bo
           1 <input aria-label="New unit name" placeholder="pump" size={10} value={unit} onChange={(e) => setUnit(e.target.value)} /> =
           <input aria-label="Base units per unit" inputMode="decimal" placeholder="10" size={8} value={factor} onChange={(e) => setFactor(e.target.value)} /> {ing.baseUnit}
           <button disabled={!unit.trim() || !factor}>Add unit</button>
+        </form>
+      )}
+      {canEdit && (
+        <form className="row" onSubmit={async (e) => { e.preventDefault(); await run(() => setPar(ing.id, Number(parQty), parUnit || ing.baseUnit, userId)) }}>
+          <small>Par level (keep this much on hand):</small>
+          <input aria-label="Par quantity" size={6} inputMode="decimal" placeholder={ing.par ? String(ing.par) : '0'} value={parQty} onChange={(e) => setParQty(e.target.value)} />
+          <select aria-label="Par unit" value={parUnit || ing.baseUnit} onChange={(e) => setParUnit(e.target.value)}>
+            {[ing.baseUnit as string, ...ing.units.filter((u) => u.active).map((u) => u.name)].map((u) => <option key={u}>{u}</option>)}
+          </select>
+          <button disabled={!parQty}>Set par</button>
+          {ing.par ? <small>now {ing.par} {ing.baseUnit}</small> : null}
         </form>
       )}
       <div className="row">

@@ -86,7 +86,7 @@ export async function payOrder(
     cashierId: userId,
   }))
   let sale: Awaited<ReturnType<typeof deductSale>> | undefined
-  await db.transaction('rw', [db.orders, db.payments, db.outbox, db.discountLog, db.counters, db.queueItems, db.queueEvents, db.items, db.categories, db.approvals, db.users, db.settings, db.promos, db.promoUses, db.stockMoves, db.recipes], async () => {
+  await db.transaction('rw', [db.orders, db.payments, db.outbox, db.discountLog, db.counters, db.queueItems, db.queueEvents, db.items, db.categories, db.approvals, db.users, db.settings, db.promos, db.promoUses, db.stockMoves, db.recipes, db.ingredients], async () => {
     const emp = order.employee
     if (emp) {
       const who = await db.users.get(emp.employeeId)

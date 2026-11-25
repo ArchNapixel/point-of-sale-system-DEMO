@@ -194,7 +194,15 @@ export type TimeEntry = {
   edits?: { at: string; by: string; reason: string; was: { inAt: string; outAt?: string } }[]
 }
 // What the café buys and uses up. Counted in one base unit; other units (kg, pump, case) convert to it. Archive, never delete (rule 3).
-export type Ingredient = { id: string; name: string; baseUnit: BaseUnit; units: IngredientUnit[]; active: boolean }
+export type Ingredient = {
+  id: string
+  name: string
+  baseUnit: BaseUnit
+  units: IngredientUnit[]
+  active: boolean
+  avgCostMilli?: number // weighted average cost in thousandths of a centavo per base unit (so a fraction of a centavo per ml stays exact). Set by receiving.
+  par?: number // wanted on hand, in base units; purchase orders suggest the gap
+}
 // One version of a recipe. Saving makes a new version; old ones stay so old sales keep what they used (rule 6).
 export type Recipe = { id: string; kind: 'variant' | 'modifier'; refId: string; version: number; lines: RecipeLine[]; at: string; by: string }
 // One line of the stock ledger. qty is signed, in the ingredient's base unit: + in, - out. Never edited or deleted (rule 3).
@@ -212,6 +220,26 @@ export type StockMove = {
   note?: string
   pairId?: string // links a transfer's two sides, or a production's inputs and output
   recipeVersions?: string[] // the recipe versions a sale used, so old sales keep their cost
+  unitCostMilli?: number // what one base unit cost when this moved: a sale keeps its cost even if prices change later (rule 2)
+}
+export type Supplier = { id: string; name: string; termsDays: number; active: boolean } // termsDays 0 = pay on delivery
+// What was ordered. Quantities in base units. Received amounts come from the receipts that point at it.
+export type PurchaseOrder = {
+  id: string; number: string; supplierId: string; branchId: string; status: 'open' | 'closed'
+  lines: { ingredientId: string; qty: number }[]; at: string; by: string
+  closedShort?: boolean; closeNote?: string
+}
+// What arrived, what was turned away, and what the invoice says. Three different numbers (ordered, arrived, paid).
+export type Receipt = {
+  id: string; poId?: string; supplierId: string; branchId: string; invoiceNo?: string
+  arrivedAt: string // when it really came, which may be earlier than when someone counted it
+  at: string; by: string
+  lines: { ingredientId: string; receivedQty: number; rejectedQty: number; rejectReason?: string; cost: number; unitCostMilli: number }[]
+  total: number // centavos on the invoice for what was kept
+  needsReview: boolean; reviewedBy?: string // delivery without a PO waits for a supervisor
+  dueDate: string // arrival date + the supplier's terms
+  paidAt?: string; paidBy?: string; payMethod?: 'cash' | 'transfer'; payRef?: string; cashMovementId?: string
+  idempotencyKey: string
 }
 export type InvoicePrint = { id: string; orderId: string; userId: string; at: string; kind: 'original' | 'reprint'; approvedBy?: string }
 export type Payment = {
@@ -319,6 +347,9 @@ export const db = new Dexie('demo-pos') as Dexie & {
   ingredients: EntityTable<Ingredient, 'id'>
   recipes: EntityTable<Recipe, 'id'>
   stockMoves: EntityTable<StockMove, 'id'>
+  suppliers: EntityTable<Supplier, 'id'>
+  purchaseOrders: EntityTable<PurchaseOrder, 'id'>
+  receipts: EntityTable<Receipt, 'id'>
   promoUses: EntityTable<PromoUse, 'id'>
   cashMovements: EntityTable<CashMovement, 'id'>
   remakes: EntityTable<Remake, 'id'>
@@ -402,4 +433,9 @@ db.version(19).stores({
 })
 db.version(20).stores({
   stockMoves: 'id, ingredientId, ref, businessDate, [ingredientId+branchId]',
+})
+db.version(21).stores({
+  suppliers: 'id, name',
+  purchaseOrders: 'id, supplierId, status',
+  receipts: 'id, poId, supplierId, dueDate, &idempotencyKey',
 })

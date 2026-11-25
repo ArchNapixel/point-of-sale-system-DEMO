@@ -118,7 +118,7 @@ Because there is no seed data, you need screens to enter it.
 - [x] Auto-disable modifiers when an ingredient runs out
 
 ### 3D — Purchasing
-- [ ] Suppliers, purchase orders, receiving (short/rejected/no-PO), weighted average cost
+- [x] Suppliers, purchase orders, receiving (short/rejected/no-PO), weighted average cost
 
 ### 3E — Counts and variance
 - [ ] Blind stock count; variance report in units and pesos
